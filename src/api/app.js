@@ -11,10 +11,11 @@ import { search, RANKING_SIGNALS, EXCLUDED_FOREVER } from '../core/ranker.js';
 import { stem } from '../core/tokenizer.js';
 import {
   emptyUsersData, emptyUsageData, createAccount, resolveActor, chargeSearch, usedToday,
+  linkSession, unlinkSession, userForSession, extractApiKey, findUserByKey,
 } from './auth.js';
 import { publicPlans, subscribe, cancelSubscription } from './billing.js';
 import {
-  emptyHistoryData, recordSearch, listHistory, clearHistory, removeHistoryEntry,
+  emptyHistoryData, recordSearch, listHistory, clearHistory, removeHistoryEntry, migrateHistory,
 } from './history.js';
 
 const INDEX_HTML_PATH = new URL('../../public/index.html', import.meta.url);
@@ -160,14 +161,18 @@ export async function createApp(overrides = {}) {
       const perPage = Math.max(1, Math.min(50, Number(url.searchParams.get('per_page')) || 10));
       const isPrivate = url.searchParams.get('private') === '1';
 
-      const actor = resolveActor(req, url, usersStore.data, config);
+      // A cross-site GET carries the session cookie under SameSite=Lax, so a
+      // hostile page could otherwise spend a victim's quota or plant history.
+      // Cross-site requests run as anonymous and never touch history.
+      const crossSite = (req.headers['sec-fetch-site'] || '') === 'cross-site';
+      const session = resolveSession(req);
+      const actor = resolveActor(req, url, usersStore.data, config, crossSite ? null : session.id);
       const usage = chargeSearch(usageStore.data, actor);
       usageStore.scheduleSave();
 
-      const session = resolveSession(req);
       const { body, cacheStatus } = cachedSearch(q, page, perPage);
 
-      if (!isPrivate) {
+      if (!isPrivate && !crossSite) {
         recordSearch(historyStore.data, historyOwner(actor, session), q, body.total);
         historyStore.scheduleSave();
       }
@@ -185,8 +190,8 @@ export async function createApp(overrides = {}) {
 
     // Your history: inspectable and deletable. Never used for ranking or ads.
     'GET /v1/history': async (req, res, url) => {
-      const actor = resolveActor(req, url, usersStore.data, config);
       const session = resolveSession(req);
+      const actor = resolveActor(req, url, usersStore.data, config, session.id);
       const limit = Number(url.searchParams.get('limit')) || 20;
       const headers = session.isNew ? { 'set-cookie': sessionCookieHeader(session.id) } : {};
       sendJson(res, 200, {
@@ -196,8 +201,8 @@ export async function createApp(overrides = {}) {
     },
 
     'DELETE /v1/history': async (req, res, url) => {
-      const actor = resolveActor(req, url, usersStore.data, config);
       const session = resolveSession(req);
+      const actor = resolveActor(req, url, usersStore.data, config, session.id);
       const owner = historyOwner(actor, session);
       const query = url.searchParams.get('query');
       const removed = query
@@ -247,13 +252,48 @@ export async function createApp(overrides = {}) {
 
     'POST /v1/account': async (req, res) => {
       const body = await readBody(req);
-      const { user, apiKey } = createAccount(usersStore.data, body.email);
+      const { user, apiKey } = createAccount(usersStore.data, body.email, body.name);
+
+      // Sign this browser in with a FRESH session id (rotating at the
+      // privilege boundary defeats session fixation), and carry any
+      // anonymous history from the old session into the account.
+      const oldSession = resolveSession(req);
+      const newSessionId = randomUUID();
+      migrateHistory(historyStore.data, `sess:${oldSession.id}`, `user:${user.id}`);
+      unlinkSession(usersStore.data, oldSession.id);
+      linkSession(usersStore.data, newSessionId, user.id);
       usersStore.scheduleSave();
+      historyStore.scheduleSave();
+
       sendJson(res, 201, {
-        account: { id: user.id, email: user.email, plan: user.plan, createdAt: user.createdAt },
+        account: { id: user.id, email: user.email, name: user.name, plan: user.plan, createdAt: user.createdAt },
         apiKey,
+        signedIn: true,
         note: 'Store this API key now — it is shown only once and kept only as a hash.',
-      });
+      }, { 'set-cookie': sessionCookieHeader(newSessionId) });
+    },
+
+    // Sign an existing account into this browser: paste the API key once,
+    // the session cookie carries it from then on. Session id rotates here
+    // for the same fixation-defense reason as account creation.
+    'POST /v1/session/signin': async (req, res, url) => {
+      const body = await readBody(req);
+      const apiKey = extractApiKey(req, url) || body.apiKey;
+      const user = findUserByKey(usersStore.data, apiKey);
+      if (!user) {
+        throw Object.assign(new Error('That key didn’t match any account.'), { status: 401, code: 'invalid_key' });
+      }
+      const oldSession = resolveSession(req);
+      const newSessionId = randomUUID();
+      migrateHistory(historyStore.data, `sess:${oldSession.id}`, `user:${user.id}`);
+      unlinkSession(usersStore.data, oldSession.id);
+      linkSession(usersStore.data, newSessionId, user.id);
+      usersStore.scheduleSave();
+      historyStore.scheduleSave();
+      sendJson(res, 200, {
+        signedIn: true,
+        account: { email: user.email, name: user.name ?? null, plan: user.plan },
+      }, { 'set-cookie': sessionCookieHeader(newSessionId) });
     },
 
     'GET /v1/account': async (req, res, url) => {
@@ -262,12 +302,31 @@ export async function createApp(overrides = {}) {
         account: {
           id: actor.user.id,
           email: actor.user.email,
+          name: actor.user.name ?? null,
           plan: actor.user.plan,
           subscription: actor.user.subscription,
           createdAt: actor.user.createdAt,
         },
         usageToday: { used: usedToday(usageStore.data, actor.id), limit: actor.dailyLimit },
       });
+    },
+
+    // Who is this browser signed in as? Always 200, so the web app can ask
+    // politely without generating 401 noise on every load.
+    'GET /v1/session': async (req, res) => {
+      const session = resolveSession(req);
+      const user = userForSession(usersStore.data, session.id);
+      const headers = session.isNew ? { 'set-cookie': sessionCookieHeader(session.id) } : {};
+      sendJson(res, 200, user
+        ? { signedIn: true, account: { email: user.email, name: user.name ?? null, plan: user.plan } }
+        : { signedIn: false }, headers);
+    },
+
+    'POST /v1/account/logout': async (req, res) => {
+      const session = resolveSession(req);
+      unlinkSession(usersStore.data, session.id);
+      usersStore.scheduleSave();
+      sendJson(res, 200, { signedOut: true });
     },
 
     'POST /v1/subscribe': async (req, res, url) => {
@@ -290,9 +349,10 @@ export async function createApp(overrides = {}) {
   };
 
   function requireUser(req, url) {
-    const actor = resolveActor(req, url, usersStore.data, config);
+    const session = resolveSession(req);
+    const actor = resolveActor(req, url, usersStore.data, config, session.id);
     if (!actor.user) {
-      throw Object.assign(new Error('This endpoint needs an API key (Authorization: Bearer <key>).'), {
+      throw Object.assign(new Error('This endpoint needs an API key (Authorization: Bearer <key>) or a signed-in session.'), {
         status: 401,
         code: 'auth_required',
       });

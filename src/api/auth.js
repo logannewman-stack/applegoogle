@@ -8,7 +8,7 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 
 export function emptyUsersData() {
-  return { users: {}, byEmail: {}, byKeyHash: {} };
+  return { users: {}, byEmail: {}, byKeyHash: {}, sessionLinks: {} };
 }
 
 export function emptyUsageData() {
@@ -21,7 +21,12 @@ export function hashKey(key) {
   return createHash('sha256').update(key).digest('hex');
 }
 
-export function createAccount(usersData, email) {
+export function cleanName(name) {
+  const cleaned = String(name || '').replace(/[<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, 60);
+  return cleaned || null;
+}
+
+export function createAccount(usersData, email, name) {
   const normEmail = String(email || '').trim().toLowerCase();
   if (!EMAIL_RE.test(normEmail)) {
     throw Object.assign(new Error('A valid email address is required.'), { status: 400, code: 'invalid_email' });
@@ -34,6 +39,7 @@ export function createAccount(usersData, email) {
   const user = {
     id: randomUUID(),
     email: normEmail,
+    name: cleanName(name),
     plan: 'free', // 'free' | 'subscriber'
     subscription: null,
     createdAt: new Date().toISOString(),
@@ -42,6 +48,22 @@ export function createAccount(usersData, email) {
   usersData.byEmail[normEmail] = user.id;
   usersData.byKeyHash[hashKey(apiKey)] = user.id;
   return { user, apiKey };
+}
+
+// Bind a browser session to an account so the web app is signed in without
+// ever holding the API key in the page.
+export function linkSession(usersData, sessionId, userId) {
+  usersData.sessionLinks ??= {};
+  usersData.sessionLinks[sessionId] = userId;
+}
+
+export function unlinkSession(usersData, sessionId) {
+  if (usersData.sessionLinks) delete usersData.sessionLinks[sessionId];
+}
+
+export function userForSession(usersData, sessionId) {
+  const id = usersData.sessionLinks?.[sessionId];
+  return id ? usersData.users[id] || null : null;
 }
 
 export function findUserByKey(usersData, apiKey) {
@@ -65,16 +87,30 @@ export function clientIp(req, { trustProxy = false } = {}) {
 }
 
 // Who is making this request, and what are they allowed to do today?
-export function resolveActor(req, url, usersData, config) {
+// Credentials, in order of preference: explicit API key, then an account
+// bound to the browser session cookie, then anonymous-by-IP.
+export function resolveActor(req, url, usersData, config, sessionId = null) {
   const apiKey = extractApiKey(req, url);
+  const userLimits = (user) => ({
+    id: `user:${user.id}`,
+    user,
+    plan: user.plan,
+    dailyLimit: user.plan === 'subscriber' ? config.subscriberDailyLimit : config.freeDailyLimit,
+  });
+
   if (apiKey) {
     const user = findUserByKey(usersData, apiKey);
     if (!user) {
       throw Object.assign(new Error('Unknown API key.'), { status: 401, code: 'invalid_key' });
     }
-    const limit = user.plan === 'subscriber' ? config.subscriberDailyLimit : config.freeDailyLimit;
-    return { id: `user:${user.id}`, user, plan: user.plan, dailyLimit: limit };
+    return userLimits(user);
   }
+
+  if (sessionId) {
+    const user = userForSession(usersData, sessionId);
+    if (user) return userLimits(user);
+  }
+
   return {
     id: `ip:${clientIp(req, config)}`,
     user: null,

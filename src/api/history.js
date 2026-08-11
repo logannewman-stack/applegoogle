@@ -46,6 +46,18 @@ export function clearHistory(data, ownerId) {
   return had;
 }
 
+// When an anonymous session becomes an account, its history comes along.
+export function migrateHistory(data, fromOwner, toOwner) {
+  const from = data.owners[fromOwner];
+  if (!from || from.length === 0) return 0;
+  const to = data.owners[toOwner] || [];
+  data.owners[toOwner] = [...to, ...from]
+    .sort((a, b) => (a.at < b.at ? -1 : 1))
+    .slice(-MAX_ENTRIES);
+  delete data.owners[fromOwner];
+  return from.length;
+}
+
 export function removeHistoryEntry(data, ownerId, query) {
   const entries = data.owners[ownerId];
   if (!entries) return 0;

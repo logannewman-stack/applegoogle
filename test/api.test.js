@@ -11,8 +11,8 @@ let base;
 let dataDir;
 
 before(async () => {
-  dataDir = await mkdtemp(join(tmpdir(), 'applegoogle-test-'));
-  app = await createApp({ dataDir, anonDailyLimit: 3, freeDailyLimit: 5 });
+  dataDir = await mkdtemp(join(tmpdir(), 'northstar-test-'));
+  app = await createApp({ dataDir, anonDailyLimit: 6, freeDailyLimit: 5 });
 
   app.index.addDocument({
     url: 'https://brew.example.org/guides/pour-over',
@@ -49,12 +49,15 @@ const post = (path, body, headers = {}) =>
     body: JSON.stringify(body),
   });
 
-test('GET / serves the monochrome Northstar page', async () => {
+test('GET / serves the monochrome Northstar page with the story', async () => {
   const res = await get('/');
   assert.equal(res.status, 200);
   const html = await res.text();
   assert.ok(html.includes('Northstar'));
   assert.ok(html.includes('No ads. No sponsored results.'));
+  assert.ok(html.includes('NOBODY CAN BUY THE SKY'), 'the tagline beat ships');
+  assert.ok(html.includes('Skip the story'), 'the story is skippable');
+  assert.ok(html.includes('Start searching truly'), 'the finale CTA ships');
 });
 
 test('search finds seeded documents and explains why', async () => {
@@ -103,11 +106,61 @@ test('search without a query is a 400', async () => {
   assert.equal(body.error.code, 'missing_query');
 });
 
+test('creating an account rotates the session and migrates anonymous history', async () => {
+  const s = await get('/v1/search?q=sourdough');
+  const oldCookie = s.headers.get('set-cookie').split(';')[0];
+
+  const created = await post('/v1/account', { email: 'migrate@example.com' }, { cookie: oldCookie });
+  assert.equal(created.status, 201);
+  const newCookie = created.headers.get('set-cookie').split(';')[0];
+  assert.notEqual(newCookie, oldCookie, 'session id rotates at the privilege boundary');
+
+  const oldSess = await get('/v1/session', { cookie: oldCookie });
+  assert.equal((await oldSess.json()).signedIn, false, 'the pre-signin session id is dead');
+
+  const hist = await get('/v1/history', { cookie: newCookie });
+  assert.ok(
+    (await hist.json()).history.some((h) => h.query === 'sourdough'),
+    'anonymous history followed the user into the account',
+  );
+});
+
+test('signing in with an API key binds this browser to the account', async () => {
+  const created = await post('/v1/account', { email: 'signin@example.com' });
+  const { apiKey } = await created.json();
+
+  const res = await post('/v1/session/signin', { apiKey });
+  assert.equal(res.status, 200);
+  const cookie = res.headers.get('set-cookie').split(';')[0];
+  const sess = await get('/v1/session', { cookie });
+  const body = await sess.json();
+  assert.equal(body.signedIn, true);
+  assert.equal(body.account.email, 'signin@example.com');
+
+  const bad = await post('/v1/session/signin', { apiKey: 'ns_not_a_real_key' });
+  assert.equal(bad.status, 401);
+});
+
+test('cross-site requests cannot spend a session or plant history', async () => {
+  const created = await post('/v1/account', { email: 'csrf@example.com' });
+  const cookie = created.headers.get('set-cookie').split(';')[0];
+
+  const res = await get('/v1/search?q=planted+embarrassing+query', { cookie, 'sec-fetch-site': 'cross-site' });
+  assert.equal(res.status, 200);
+  assert.equal((await res.json()).plan, 'anonymous', 'the cookie session is ignored cross-site');
+
+  const hist = await get('/v1/history', { cookie });
+  assert.ok(
+    !(await hist.json()).history.some((h) => h.query.includes('planted')),
+    'cross-site searches never touch history',
+  );
+});
+
 test('anonymous searches hit the daily limit, then 402 with an upgrade path', async () => {
-  // anonDailyLimit is 3 and earlier tests spent part of it; searching until
+  // Earlier tests spent part of the anonymous allowance; searching until
   // refusal keeps this test independent of exact ordering.
   let res;
-  for (let i = 0; i <= 4; i++) {
+  for (let i = 0; i <= 8; i++) {
     res = await get('/v1/search?q=closures');
     if (res.status === 402) break;
     assert.equal(res.status, 200);
@@ -174,6 +227,41 @@ test('query cache serves repeats; private searches stay out of history', async (
   assert.ok(entry, 'keyed searches recorded under the account');
   assert.equal(entry.times, 2, 'repeat searches collapse into one entry');
   assert.ok(!history.some((h) => h.query === 'do not remember this'), 'private search never recorded');
+});
+
+test('accounts bind to the browser session: cookie sign-in, name, logout', async () => {
+  const created = await post('/v1/account', { email: 'story@example.com', name: '  Nova   Vega  ' });
+  assert.equal(created.status, 201);
+  const createdBody = await created.json();
+  assert.equal(createdBody.account.name, 'Nova Vega', 'name is cleaned and stored');
+  assert.equal(createdBody.signedIn, true);
+  const cookie = created.headers.get('set-cookie').split(';')[0];
+
+  // Cookie alone authenticates — no bearer key in the browser.
+  const me = await get('/v1/account', { cookie });
+  assert.equal(me.status, 200);
+  assert.equal((await me.json()).account.name, 'Nova Vega');
+
+  const search = await get('/v1/search?q=coffee', { cookie });
+  assert.equal((await search.json()).plan, 'free', 'session-bound searches use account limits');
+
+  await fetch(`${base}/v1/account/logout`, { method: 'POST', headers: { cookie } });
+  const after = await get('/v1/account', { cookie });
+  assert.equal(after.status, 401, 'logout unbinds the session');
+});
+
+test('session endpoint reports sign-in state without 401s', async () => {
+  const anon = await get('/v1/session');
+  assert.equal(anon.status, 200);
+  assert.equal((await anon.json()).signedIn, false);
+
+  const created = await post('/v1/account', { email: 'session@example.com', name: 'Sess' });
+  const cookie = created.headers.get('set-cookie').split(';')[0];
+  const signed = await get('/v1/session', { cookie });
+  assert.equal(signed.status, 200);
+  const body = await signed.json();
+  assert.equal(body.signedIn, true);
+  assert.equal(body.account.name, 'Sess');
 });
 
 test('duplicate accounts are rejected', async () => {

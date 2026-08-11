@@ -1,5 +1,7 @@
 # ✦ Northstar
 
+**NOBODY CAN BUY THE SKY.**
+
 A search engine built on one idea: **if the searcher pays, the searcher is the
 only customer.** No ads. No sponsored results. No paid placement — there is no
 code path for money to touch a ranking, and [a test enforces that](INTEGRITY.md).
@@ -25,7 +27,7 @@ standard-library Node.
 ```bash
 npm run seed     # load sample documents so search works immediately
 npm start        # http://127.0.0.1:3000
-npm test         # 45 tests, including the ranking-integrity test
+npm test         # 50 tests, including the ranking-integrity test
 ```
 
 Open http://127.0.0.1:3000 and search for *pour over coffee*, *closures*, or
@@ -33,6 +35,14 @@ Open http://127.0.0.1:3000 and search for *pour over coffee*, *closures*, or
 
 ## What the product does
 
+- **Opens with a story.** First launch is a cinematic, skippable onboarding —
+  "First Light" — told over a living starfield: what ad-funded search became,
+  what Northstar promises instead, and the tagline moment. Along the way it
+  asks (with the honest reason stated on screen, every time) for a first name
+  (greeting only, stays on the device), an optional email (account — or
+  "Continue without one," held open with equal dignity), and up to three
+  curiosities that seed the first suggested searches. Replay it any time from
+  the footer, or with `?story=1`.
 - **Explains every result.** Each hit carries a `why` object — a plain-language
   summary plus the numeric factors behind the score. The full ranking formula
   is public API at `GET /v1/ranking`.
@@ -119,7 +129,7 @@ so Node's fetch uses `HTTPS_PROXY`.
 | `src/crawler/` | robots.txt parser, HTML extraction, polite BFS crawler |
 | `src/api/` | HTTP app, accounts/keys, subscriptions, history, sessions |
 | `public/index.html` | The Northstar web app |
-| `test/` | 45 tests, run with `npm test` |
+| `test/` | 50 tests, run with `npm test` |
 
 ## API
 
@@ -138,9 +148,17 @@ curl -X DELETE 'localhost:3000/v1/history?query=old+search' # remove one
 # The public ranking formula — the trust feature
 curl 'localhost:3000/v1/ranking'
 
-# Create an account (returns an API key, shown once)
+# Create an account (returns an API key, shown once; binds this browser's
+# session cookie with a fresh session id and migrates anonymous history in)
 curl -X POST localhost:3000/v1/account \
-  -H 'content-type: application/json' -d '{"email":"you@example.com"}'
+  -H 'content-type: application/json' -d '{"email":"you@example.com","name":"Nova"}'
+
+# Sign an existing account into a browser session (paste-your-key flow)
+curl -X POST localhost:3000/v1/session/signin \
+  -H 'content-type: application/json' -d '{"apiKey":"ns_…"}'
+
+# Who is this browser signed in as? (always 200)
+curl 'localhost:3000/v1/session'
 
 # Subscribe (dev-mode activation until payments are wired in)
 curl -X POST localhost:3000/v1/subscribe \
@@ -149,7 +167,12 @@ curl -X POST localhost:3000/v1/subscribe \
 ```
 
 Also: `GET /v1/suggest?q=`, `GET /v1/plans`, `GET /v1/stats`, `GET /v1/account`,
-`POST /v1/subscribe/cancel`, `GET /health`.
+`POST /v1/account/logout`, `POST /v1/subscribe/cancel`, `GET /health`.
+
+Security posture for browser sessions: the session id rotates whenever a
+session gains an account (fixation defense), and cross-site requests are
+treated as anonymous and never touch history or account quotas
+(`Sec-Fetch-Site` guard on top of `SameSite=Lax`).
 
 ## Privacy stance
 
