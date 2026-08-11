@@ -58,8 +58,9 @@ test('GET / serves the monochrome Northstar page with the story', async () => {
   assert.ok(html.includes('Northstar'));
   assert.ok(html.includes('No ads. No sponsored results.'));
   assert.ok(html.includes('NOBODY CAN BUY THE SKY'), 'the tagline beat ships');
-  assert.ok(html.includes('Skip the story'), 'the story is skippable');
-  assert.ok(html.includes('Start searching truly'), 'the finale CTA ships');
+  assert.ok(html.includes('scroll-snap-type'), 'the story advances by swipe/scroll, not buttons');
+  assert.ok(!/>\s*Continue\s*</.test(html), 'no Continue buttons remain');
+  assert.ok(html.includes('id="storyExit"'), 'the quiet wordmark exit is present');
 });
 
 test('search finds seeded documents and explains why', async () => {
@@ -72,12 +73,14 @@ test('search finds seeded documents and explains why', async () => {
   assert.ok(top.snippet.length > 0);
   assert.equal(body.plan, 'anonymous');
 
-  // The receipt: every result explains itself.
+  // The receipt: the star explains its own reasoning.
   assert.ok(top.why, 'results carry a why object');
+  assert.equal(top.why.lead, 'Your star chose this because');
+  assert.ok(top.why.reasons.length >= 2, 'concrete reasons are listed');
   assert.equal(top.why.matched.of, 3);
   assert.equal(top.why.matched.missing.length, 0);
   assert.ok(top.why.matched.inTitle.length >= 1, 'title hits are called out');
-  assert.match(top.why.summary, /matches all 3/i);
+  assert.match(top.why.summary, /matches every word/i);
   assert.match(top.why.summary, /title/i);
   assert.ok(top.why.factors.textRelevance > 0);
   assert.ok(top.why.factors.linkAuthority >= 1);

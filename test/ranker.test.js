@@ -81,13 +81,35 @@ test('INTEGRITY: sponsorship-style fields cannot change any score', () => {
   assert.deepEqual(after.scored, before.scored, 'scores moved after injecting sponsorship fields');
 });
 
+test('the star never overstates freshness or mangles counts', () => {
+  const index = buildIndex([
+    { url: 'https://x.example/old', title: 'Sourdough starter guide', text: 'Feeding a starter.', fetchedAt: '2024-01-01T00:00:00.000Z' },
+    { url: 'https://x.example/mid', title: 'Sourdough notes', text: 'Starter notes.', fetchedAt: '2026-06-20T00:00:00.000Z' },
+  ]);
+  const now = new Date('2026-08-11T00:00:00.000Z').getTime();
+  const { results } = search(index, 'sourdough starter', { now });
+
+  const old = results.find((r) => r.url.endsWith('/old'));
+  const oldFresh = old.why.reasons.find((r) => r.signal === 'freshness');
+  assert.ok(!/is current/i.test(oldFresh.text), 'a two-year-old crawl is never called current');
+  assert.match(oldFresh.text, /over a year|older source/i);
+
+  const mid = results.find((r) => r.url.endsWith('/mid'));
+  const midFresh = mid.why.reasons.find((r) => r.signal === 'freshness');
+  assert.match(midFresh.text, /days ago/i);
+
+  // Singular/plural agreement on the match count.
+  const single = search(index, 'sourdough', { now });
+  assert.match(single.results[0].why.reasons[0].text, /matches your word/i);
+});
+
 test('the published ranking manifest stays honest', () => {
   const ids = RANKING_SIGNALS.map((s) => s.id);
   assert.deepEqual(ids, ['text_relevance', 'phrase_proximity', 'link_authority', 'freshness']);
   assert.ok(EXCLUDED_FOREVER.some((line) => /paid|sponsor|payment/i.test(line)));
 });
 
-test('every result explains itself in plain language', () => {
+test("the star explains its own reasoning for every result", () => {
   const index = buildIndex([
     { url: 'https://x.example/hit', title: 'Sourdough starter guide', text: 'Feed the starter daily. Sourdough starter care is routine.' },
     { url: 'https://x.example/partial', title: 'Bread notes', text: 'A weekly baking log with a sourdough loaf.' },
@@ -98,15 +120,25 @@ test('every result explains itself in plain language', () => {
 
   const top = results[0];
   assert.equal(top.url, 'https://x.example/hit');
-  assert.match(top.why.summary, /matches all 2/i);
-  assert.match(top.why.summary, /title/i);
+  assert.equal(top.why.lead, 'Your star chose this because');
+  assert.match(top.why.assurance, /cannot be bought/i);
+
+  // Each reason names a concrete thing the page did, tagged with its signal.
+  const signals = top.why.reasons.map((r) => r.signal);
+  assert.ok(signals.includes('text_relevance'));
+  assert.ok(signals.includes('phrase_proximity'), 'exact phrase is called out');
+  assert.ok(signals.includes('link_authority'), 'inbound links are called out');
+  assert.ok(signals.includes('freshness'));
+  assert.match(top.why.reasons[0].text, /matches every word/i);
+  assert.ok(top.why.reasons.some((r) => /current/i.test(r.text)), 'fresh pages are described as current');
+  assert.ok(top.why.reasons.some((r) => /title/i.test(r.text)));
   assert.equal(top.why.exactPhrase, 'sourdough starter');
   assert.equal(top.why.inboundLinks, 1);
   assert.ok(top.why.factors.phraseProximity > 1);
   assert.ok(top.why.factors.linkAuthority > 1);
 
   const partial = results.find((r) => r.url === 'https://x.example/partial');
-  assert.match(partial.why.summary, /matches 1 of your 2/i);
+  assert.match(partial.why.reasons[0].text, /matches 1 of your 2/i);
   assert.deepEqual(partial.why.matched.missing, ['starter']);
 });
 

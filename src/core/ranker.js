@@ -176,34 +176,50 @@ export function scoreDocuments(index, query, { now = Date.now() } = {}) {
 const listJoin = (items) =>
   items.length <= 1 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
 
-function ageWords(fetchedAt, now) {
+// Freshness, stated honestly: a page last seen a year ago must not be
+// described as current.
+function freshnessReason(fetchedAt, now) {
   if (!fetchedAt) return null;
   const days = (now - new Date(fetchedAt).getTime()) / 86400000;
-  if (days < 1) return 'crawled today';
-  if (days < 2) return 'crawled yesterday';
-  if (days < 60) return `crawled ${Math.round(days)} days ago`;
-  return `crawled ${Math.round(days / 30)} months ago`;
+  if (days < 1) return 'It was crawled today, so what you’re reading is current.';
+  if (days < 2) return 'It was crawled yesterday, so what you’re reading is current.';
+  if (days < 60) return `It was crawled ${Math.round(days)} days ago, so it should still be current.`;
+  if (days < 365) return `It was last crawled ${Math.round(days / 30)} months ago — it may have changed since.`;
+  return 'It has not been crawled in over a year — read it as an older source.';
 }
 
-// The receipt: a plain-language account of why this result is on the page.
+// The receipt: the star's own account of why it steered you here.
+//
+// `reasons` is the human-facing list ("your star chose this because…"), each
+// item naming one concrete thing this page did to earn its place. `summary`
+// keeps the one-sentence form for API consumers.
 function buildWhy(doc, detail, queryInfo, now) {
   const { surfaceByStem, orderedSurfaces, required } = queryInfo;
   const quote = (stem) => `“${surfaceByStem.get(stem) || stem}”`;
 
   const matchedRequired = [...new Set(detail.requiredMatched)];
   const missing = required.filter((t) => !matchedRequired.includes(t));
-  const parts = [];
+  const reasons = [];
 
-  if (missing.length === 0) {
-    parts.push(
-      required.length === 1
-        ? `matches your search term ${quote(required[0])}`
-        : `matches all ${required.length} of your search terms`,
-    );
+  const word = (n) => (n === 1 ? 'word' : 'words');
+  if (matchedRequired.length === 0) {
+    // Only reachable via the relaxed pool (a common word carried it here).
+    reasons.push({
+      signal: 'text_relevance',
+      text: `None of your ${word(required.length)} appear here — it surfaced on weaker signals alone, so treat it with suspicion.`,
+    });
+  } else if (missing.length === 0) {
+    reasons.push({
+      signal: 'text_relevance',
+      text: required.length === 1
+        ? `It matches your word ${quote(required[0])}.`
+        : 'It matches every word you searched for.',
+    });
   } else {
-    parts.push(
-      `matches ${matchedRequired.length} of your ${required.length} search terms (no match for ${listJoin(missing.map(quote))})`,
-    );
+    reasons.push({
+      signal: 'text_relevance',
+      text: `It matches ${matchedRequired.length} of your ${required.length} ${word(required.length)} — nothing here for ${listJoin(missing.map(quote))}.`,
+    });
   }
 
   const inTitle = [...detail.fieldHits.title].filter((t) => matchedRequired.includes(t));
@@ -211,28 +227,42 @@ function buildWhy(doc, detail, queryInfo, now) {
     (t) => matchedRequired.includes(t) && !inTitle.includes(t),
   );
   if (inTitle.length > 0) {
-    parts.push(`${listJoin(inTitle.slice(0, 3).map(quote))} appear${inTitle.length === 1 ? 's' : ''} in the title`);
+    reasons.push({
+      signal: 'text_relevance',
+      text: `${listJoin(inTitle.slice(0, 3).map(quote))} ${inTitle.length === 1 ? 'sits' : 'sit'} in the page's own title, not buried in the body.`,
+    });
   } else if (inDescription.length > 0) {
-    parts.push(`${listJoin(inDescription.slice(0, 3).map(quote))} appear${inDescription.length === 1 ? 's' : ''} in the description`);
+    reasons.push({
+      signal: 'text_relevance',
+      text: `${listJoin(inDescription.slice(0, 3).map(quote))} ${inDescription.length === 1 ? 'appears' : 'appear'} in the page's summary.`,
+    });
   }
 
   let phraseText = null;
   if (detail.firstPair !== null) {
     phraseText = `${orderedSurfaces[detail.firstPair]} ${orderedSurfaces[detail.firstPair + 1]}`;
-    parts.push(`contains the exact phrase “${phraseText}”`);
+    reasons.push({
+      signal: 'phrase_proximity',
+      text: `Your exact phrase “${phraseText}” appears here, words together and in order.`,
+    });
   }
 
   const inlinks = doc.inlinks || 0;
   if (inlinks > 0) {
-    parts.push(`${inlinks} other indexed page${inlinks === 1 ? ' links' : 's link'} here`);
+    reasons.push({
+      signal: 'link_authority',
+      text: `${inlinks} other page${inlinks === 1 ? '' : 's'} in the index chose to link here — authority it earned, not bought.`,
+    });
   }
 
-  const age = ageWords(doc.fetchedAt, now);
-  if (age) parts.push(age);
+  const fresh = freshnessReason(doc.fetchedAt, now);
+  if (fresh) reasons.push({ signal: 'freshness', text: fresh });
 
-  const summary = parts.join('; ') + '.';
   return {
-    summary: summary.charAt(0).toUpperCase() + summary.slice(1),
+    lead: 'Your star chose this because',
+    reasons,
+    summary: reasons.map((r) => r.text).join(' '),
+    assurance: 'Nothing was paid to put this here. Ranking cannot be bought.',
     matched: {
       terms: matchedRequired.map((t) => surfaceByStem.get(t) || t),
       of: required.length,
