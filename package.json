@@ -1,7 +1,7 @@
 {
   "name": "northstar",
   "version": "0.2.0",
-  "description": "Northstar — a minimal, ad-free search engine that explains every result. Organic ranking only, subscription-funded.",
+  "description": "Northstar — a minimal, ad-free search engine that explains every result. Organic ranking only, free with no tiers.",
   "type": "module",
   "private": true,
   "engines": {

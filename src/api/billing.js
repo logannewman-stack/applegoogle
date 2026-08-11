@@ -1,83 +1,25 @@
-// Subscriptions — the only revenue in the product, by design.
+// Billing — deliberately unplugged.
 //
-// There is deliberately no advertising module for this file to talk to.
-// The pricing model is: pay for the service, and the service answers to you,
-// not to advertisers.
+// Northstar is free right now: no tiers, no premium results, no locked
+// features. This file is the documented seam for the eventual business
+// model, which is a simple subscription — never advertising, never paid
+// placement, never selling data. Nothing here is routed by the API today.
 //
-// Payment processing is NOT wired up yet. Activation currently uses the
-// 'dev-manual' provider so the whole flow can be built and tested end to end.
-// When ready to charge real money, implement `createCheckoutSession` with
-// Stripe (or similar) and flip activation to happen in the payment webhook.
+// When the time comes:
+//   1. Define real plans below and expose them via GET /v1/plans.
+//   2. Implement createCheckoutSession with Stripe Checkout.
+//   3. Activate subscriptions from the checkout.session.completed webhook.
+//   4. Whatever the plan gates, it must never be ranking — INTEGRITY.md and
+//      test/ranker.test.js hold regardless of who is paying.
 
-export const PLANS = {
-  monthly: {
-    id: 'monthly',
-    name: 'Monthly',
-    priceUsd: 8,
-    interval: 'month',
-    description: 'Effectively unlimited search. Cancel any time.',
-  },
-  annual: {
-    id: 'annual',
-    name: 'Annual',
-    priceUsd: 80,
-    interval: 'year',
-    description: 'Two months free versus monthly.',
-  },
+export const DRAFT_PLANS = {
+  monthly: { id: 'monthly', priceUsd: 8, interval: 'month' },
+  annual: { id: 'annual', priceUsd: 80, interval: 'year' },
 };
 
-export function publicPlans() {
-  return {
-    plans: Object.values(PLANS),
-    principles: [
-      'Subscriptions are the only source of revenue.',
-      'No advertising. No sponsored results. No paid ranking — there is no mechanism for it.',
-      'If you stop paying, you fall back to the free tier; your data is not sold either way.',
-    ],
-  };
-}
-
-export function subscribe(user, planId) {
-  const plan = PLANS[planId];
-  if (!plan) {
-    throw Object.assign(new Error(`Unknown plan '${planId}'. Available: ${Object.keys(PLANS).join(', ')}.`), {
-      status: 400,
-      code: 'unknown_plan',
-    });
-  }
-  const now = new Date();
-  const renews = new Date(now);
-  if (plan.interval === 'month') renews.setMonth(renews.getMonth() + 1);
-  else renews.setFullYear(renews.getFullYear() + 1);
-
-  user.plan = 'subscriber';
-  user.subscription = {
-    planId: plan.id,
-    status: 'active',
-    provider: 'dev-manual', // replace with 'stripe' once payments are wired in
-    startedAt: now.toISOString(),
-    currentPeriodEnd: renews.toISOString(),
-  };
-  return user.subscription;
-}
-
-export function cancelSubscription(user) {
-  if (!user.subscription || user.subscription.status !== 'active') {
-    throw Object.assign(new Error('No active subscription to cancel.'), { status: 400, code: 'not_subscribed' });
-  }
-  user.subscription.status = 'canceled';
-  user.subscription.canceledAt = new Date().toISOString();
-  user.plan = 'free';
-  return user.subscription;
-}
-
-// The seam where a real payment provider plugs in.
 export async function createCheckoutSession() {
   throw Object.assign(
-    new Error(
-      'Payment processing is not configured yet. Wire a Stripe Checkout session here, ' +
-        'activate the subscription from the checkout.session.completed webhook, and remove the dev-manual provider.',
-    ),
+    new Error('Payments are not wired up — Northstar is free right now. See src/api/billing.js for the future seam.'),
     { status: 501, code: 'payments_not_configured' },
   );
 }

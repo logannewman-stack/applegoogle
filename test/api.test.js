@@ -12,7 +12,9 @@ let dataDir;
 
 before(async () => {
   dataDir = await mkdtemp(join(tmpdir(), 'northstar-test-'));
-  app = await createApp({ dataDir, anonDailyLimit: 6, freeDailyLimit: 5 });
+  // High ceiling so unrelated tests never trip it; the 429 behavior gets its
+  // own dedicated low-ceiling app below.
+  app = await createApp({ dataDir, dailyFairUseCeiling: 1000 });
 
   app.index.addDocument({
     url: 'https://brew.example.org/guides/pour-over',
@@ -156,27 +158,34 @@ test('cross-site requests cannot spend a session or plant history', async () => 
   );
 });
 
-test('anonymous searches hit the daily limit, then 402 with an upgrade path', async () => {
-  // Earlier tests spent part of the anonymous allowance; searching until
-  // refusal keeps this test independent of exact ordering.
-  let res;
-  for (let i = 0; i <= 8; i++) {
-    res = await get('/v1/search?q=closures');
-    if (res.status === 402) break;
-    assert.equal(res.status, 200);
+test('free has no paywall — only a fair-use 429 at the ceiling', async () => {
+  // A dedicated app with a tiny ceiling, so the assertion is exact and
+  // isolated from the shared app's usage.
+  const dir = await mkdtemp(join(tmpdir(), 'northstar-ceiling-'));
+  const ceilingApp = await createApp({ dataDir: dir, dailyFairUseCeiling: 2 });
+  await new Promise((r) => ceilingApp.server.listen(0, '127.0.0.1', r));
+  const cbase = `http://127.0.0.1:${ceilingApp.server.address().port}`;
+  try {
+    assert.equal((await fetch(`${cbase}/v1/search?q=a`)).status, 200);
+    assert.equal((await fetch(`${cbase}/v1/search?q=b`)).status, 200);
+    const third = await fetch(`${cbase}/v1/search?q=c`);
+    assert.equal(third.status, 429, 'the only refusal is the anti-abuse ceiling');
+    const body = await third.json();
+    assert.equal(body.error.code, 'fair_use_ceiling');
+    assert.match(body.error.message, /free/i);
+    assert.equal(third.status === 402, false, 'there is no paywall');
+  } finally {
+    await ceilingApp.close();
+    await rm(dir, { recursive: true, force: true });
   }
-  assert.equal(res.status, 402);
-  const body = await res.json();
-  assert.equal(body.error.code, 'subscription_required');
-  assert.ok(body.error.upgrade.subscribe.includes('/v1/subscribe'));
 });
 
-test('account lifecycle: create, authenticate, subscribe, cancel', async () => {
+test('account lifecycle: create, authenticate, rename', async () => {
   const created = await post('/v1/account', { email: 'logan@example.com' });
   assert.equal(created.status, 201);
   const { apiKey, account } = await created.json();
   assert.ok(apiKey.startsWith('ns_'));
-  assert.equal(account.plan, 'free');
+  assert.equal(account.email, 'logan@example.com');
 
   const auth = { authorization: `Bearer ${apiKey}` };
 
@@ -184,26 +193,20 @@ test('account lifecycle: create, authenticate, subscribe, cancel', async () => {
   assert.equal(me.status, 200);
   const meBody = await me.json();
   assert.equal(meBody.account.email, 'logan@example.com');
-  assert.equal(meBody.usageToday.limit, 5);
+  assert.equal(meBody.usageToday.limit, 1000, 'everyone shares the same fair-use ceiling');
 
-  // Keyed search works even though the anonymous IP limit is exhausted.
+  // Keyed search runs under the account actor, not the IP.
   const search = await get('/v1/search?q=closures', auth);
   assert.equal(search.status, 200);
-  const searchBody = await search.json();
-  assert.equal(searchBody.plan, 'free');
+  assert.equal((await search.json()).plan, 'account');
 
-  const sub = await post('/v1/subscribe', { plan: 'monthly' }, auth);
-  assert.equal(sub.status, 200);
-  const subBody = await sub.json();
-  assert.equal(subBody.subscription.status, 'active');
-
-  const afterSub = await get('/v1/account', auth);
-  assert.equal((await afterSub.json()).account.plan, 'subscriber');
-
-  const cancel = await post('/v1/subscribe/cancel', {}, auth);
-  assert.equal(cancel.status, 200);
-  const cancelBody = await cancel.json();
-  assert.equal(cancelBody.subscription.status, 'canceled');
+  const renamed = await fetch(`${base}/v1/account`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json', ...auth },
+    body: JSON.stringify({ name: 'Captain Logan' }),
+  });
+  assert.equal(renamed.status, 200);
+  assert.equal((await renamed.json()).account.name, 'Captain Logan');
 });
 
 test('query cache serves repeats; private searches stay out of history', async () => {
@@ -243,7 +246,7 @@ test('accounts bind to the browser session: cookie sign-in, name, logout', async
   assert.equal((await me.json()).account.name, 'Nova Vega');
 
   const search = await get('/v1/search?q=coffee', { cookie });
-  assert.equal((await search.json()).plan, 'free', 'session-bound searches use account limits');
+  assert.equal((await search.json()).plan, 'account', 'session-bound searches run as the account');
 
   await fetch(`${base}/v1/account/logout`, { method: 'POST', headers: { cookie } });
   const after = await get('/v1/account', { cookie });
@@ -284,11 +287,120 @@ test('ranking transparency endpoint publishes the signals and the exclusions', a
   assert.match(body.promise, /cannot be bought/i);
 });
 
-test('plans endpoint states the no-ads principle', async () => {
+test('plans endpoint says free, no tiers, never ads', async () => {
   const res = await get('/v1/plans');
   const body = await res.json();
-  assert.equal(body.plans.length, 2);
+  assert.equal(body.pricing, 'free');
+  assert.match(body.message, /no tiers/i);
   assert.ok(body.principles.some((p) => /No advertising/i.test(p)));
+});
+
+test('settings: defaults, account persistence, validation, enforcement', async () => {
+  // Anonymous callers see defaults and cannot write.
+  const anon = await get('/v1/settings');
+  const anonBody = await anon.json();
+  assert.equal(anonBody.stored, 'defaults');
+  assert.equal(anonBody.settings.resultsPerPage, 10);
+  const anonPut = await fetch(`${base}/v1/settings`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ resultsPerPage: 20 }),
+  });
+  assert.equal(anonPut.status, 401);
+
+  // Account settings persist and shape behavior.
+  const created = await post('/v1/account', { email: 'tuner@example.com' });
+  const cookie = created.headers.get('set-cookie').split(';')[0];
+  const put = await fetch(`${base}/v1/settings`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json', cookie },
+    body: JSON.stringify({ resultsPerPage: 20, saveHistory: false }),
+  });
+  assert.equal(put.status, 200);
+  assert.equal((await put.json()).settings.resultsPerPage, 20);
+
+  // Junk is rejected loudly, not silently dropped — including inherited keys
+  // that a naive lookup would treat as valid (prototype-pollution shapes).
+  // Sent as raw JSON so "__proto__"/"constructor" arrive as real keys.
+  const badBodies = [
+    '{"sneakyBoost":true}',
+    '{"resultsPerPage":999}',
+    '{"theme":"neon"}',
+    '{"constructor":{"x":1}}',
+    '{"__proto__":{"polluted":1}}',
+    '{"hasOwnProperty":"x"}',
+  ];
+  for (const body of badBodies) {
+    const res = await fetch(`${base}/v1/settings`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json', cookie },
+      body,
+    });
+    assert.equal(res.status, 400, `${body} should be rejected`);
+  }
+  assert.equal({}.polluted, undefined, 'prototype was not polluted');
+
+  // resultsPerPage becomes the search default; saveHistory=false is
+  // enforced by the server even without &private=1.
+  const search = await get('/v1/search?q=coffee+or+closures', { cookie });
+  const searchBody = await search.json();
+  assert.equal(searchBody.perPage, 20);
+  assert.equal(searchBody.private, true, 'server treats searches as private when saveHistory is off');
+  const hist = await get('/v1/history', { cookie });
+  assert.equal((await hist.json()).history.length, 0, 'nothing recorded with saveHistory off');
+});
+
+test('sign-in respects the account privacy setting for anonymous history', async () => {
+  // Make an account that keeps no history.
+  const created = await post('/v1/account', { email: 'noh@example.com' });
+  const { apiKey } = await created.json();
+  const firstCookie = created.headers.get('set-cookie').split(';')[0];
+  await fetch(`${base}/v1/settings`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json', cookie: firstCookie },
+    body: JSON.stringify({ saveHistory: false }),
+  });
+
+  // A fresh anonymous browser searches, then signs into that account.
+  const anonSearch = await get('/v1/search?q=embarrassing+anonymous+query');
+  const anonCookie = anonSearch.headers.get('set-cookie').split(';')[0];
+  const signin = await post('/v1/session/signin', { apiKey }, { cookie: anonCookie });
+  const signedCookie = signin.headers.get('set-cookie').split(';')[0];
+
+  const hist = await get('/v1/history', { cookie: signedCookie });
+  assert.equal((await hist.json()).history.length, 0,
+    'anonymous history is NOT migrated into a no-history account');
+});
+
+test('deleting an account removes keys, history, and session', async () => {
+  const created = await post('/v1/account', { email: 'gone@example.com' });
+  const { apiKey } = await created.json();
+  const cookie = created.headers.get('set-cookie').split(';')[0];
+
+  await get('/v1/search?q=coffee', { cookie });
+  const del = await fetch(`${base}/v1/account`, { method: 'DELETE', headers: { cookie } });
+  assert.equal(del.status, 200);
+  assert.equal((await del.json()).deleted, true);
+
+  assert.equal((await (await get('/v1/session', { cookie })).json()).signedIn, false);
+  const keyUse = await get('/v1/account', { authorization: `Bearer ${apiKey}` });
+  assert.equal(keyUse.status, 401, 'deleted account keys are dead');
+  const signin = await post('/v1/session/signin', { apiKey });
+  assert.equal(signin.status, 401);
+});
+
+test('PWA assets are served', async () => {
+  const manifest = await get('/manifest.webmanifest');
+  assert.equal(manifest.status, 200);
+  assert.match(manifest.headers.get('content-type'), /manifest/);
+  assert.equal((await manifest.json()).name, 'Northstar');
+
+  const icon = await get('/apple-touch-icon.png');
+  assert.equal(icon.status, 200);
+  assert.match(icon.headers.get('content-type'), /png/);
+
+  const svg = await get('/icon.svg');
+  assert.equal(svg.status, 200);
 });
 
 test('suggest completes prefixes from the index', async () => {

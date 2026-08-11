@@ -13,11 +13,11 @@ export function makeConfig(overrides = {}) {
     host: env.HOST || '127.0.0.1',
     dataDir: env.DATA_DIR || new URL('../data/', import.meta.url).pathname,
 
-    // Daily search allowances per plan. The subscription is the product —
-    // there are no ads to fall back on, so limits are how the free tier stays free.
-    anonDailyLimit: num(env.ANON_DAILY_LIMIT, 25),
-    freeDailyLimit: num(env.FREE_DAILY_LIMIT, 100),
-    subscriberDailyLimit: num(env.SUBSCRIBER_DAILY_LIMIT, 10000),
+    // Northstar is free right now — no tiers, no premium anything. The one
+    // limit is a high fair-use ceiling, identical for everyone, that exists
+    // purely to stop abuse. (The eventual business model is a subscription —
+    // never advertising.)
+    dailyFairUseCeiling: num(env.DAILY_FAIR_USE_CEILING, 2000),
 
     // Set to true only when running behind a reverse proxy that sets X-Forwarded-For.
     trustProxy: env.TRUST_PROXY === '1',

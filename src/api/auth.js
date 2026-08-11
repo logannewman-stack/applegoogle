@@ -1,9 +1,9 @@
-// Accounts, API keys, and daily usage limits.
+// Accounts, API keys, and usage limits.
 //
 // Keys are shown once at creation and stored only as SHA-256 hashes.
-// Anonymous searches are allowed (that is the free taste of the product);
-// they are limited per IP per day. Accounts raise the limit; subscriptions
-// effectively remove it. That ladder — not advertising — is the business.
+// Northstar is free: anonymous visitors and account holders alike get the
+// same engine and the same anti-abuse fair-use ceiling. There are no tiers.
+// (The eventual business model is a subscription — never advertising.)
 
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 
@@ -40,8 +40,7 @@ export function createAccount(usersData, email, name) {
     id: randomUUID(),
     email: normEmail,
     name: cleanName(name),
-    plan: 'free', // 'free' | 'subscriber'
-    subscription: null,
+    settings: {},
     createdAt: new Date().toISOString(),
   };
   usersData.users[user.id] = user;
@@ -86,16 +85,17 @@ export function clientIp(req, { trustProxy = false } = {}) {
   return req.socket.remoteAddress || 'unknown';
 }
 
-// Who is making this request, and what are they allowed to do today?
-// Credentials, in order of preference: explicit API key, then an account
-// bound to the browser session cookie, then anonymous-by-IP.
+// Who is making this request? Credentials, in order of preference: explicit
+// API key, then an account bound to the browser session cookie, then
+// anonymous-by-IP. Everyone gets the same engine and the same fair-use
+// ceiling — there are no tiers.
 export function resolveActor(req, url, usersData, config, sessionId = null) {
   const apiKey = extractApiKey(req, url);
-  const userLimits = (user) => ({
-    id: `user:${user.id}`,
+  const actor = (user) => ({
+    id: user ? `user:${user.id}` : `ip:${clientIp(req, config)}`,
     user,
-    plan: user.plan,
-    dailyLimit: user.plan === 'subscriber' ? config.subscriberDailyLimit : config.freeDailyLimit,
+    plan: user ? 'account' : 'anonymous',
+    dailyLimit: config.dailyFairUseCeiling,
   });
 
   if (apiKey) {
@@ -103,20 +103,15 @@ export function resolveActor(req, url, usersData, config, sessionId = null) {
     if (!user) {
       throw Object.assign(new Error('Unknown API key.'), { status: 401, code: 'invalid_key' });
     }
-    return userLimits(user);
+    return actor(user);
   }
 
   if (sessionId) {
     const user = userForSession(usersData, sessionId);
-    if (user) return userLimits(user);
+    if (user) return actor(user);
   }
 
-  return {
-    id: `ip:${clientIp(req, config)}`,
-    user: null,
-    plan: 'anonymous',
-    dailyLimit: config.anonDailyLimit,
-  };
+  return actor(null);
 }
 
 const dayKey = (now = new Date()) => now.toISOString().slice(0, 10);
@@ -125,25 +120,18 @@ export function usedToday(usageData, actorId, now) {
   return usageData.days[dayKey(now)]?.[actorId] || 0;
 }
 
-// Increments the actor's counter; throws 402/429 when today's allowance is gone.
+// Increments the actor's counter. Northstar is free — the only refusal is a
+// high fair-use ceiling (identical for everyone) that exists to stop abuse.
 export function chargeSearch(usageData, actor, now = new Date()) {
   const day = dayKey(now);
   usageData.days[day] ??= {};
   const used = usageData.days[day][actor.id] || 0;
 
   if (used >= actor.dailyLimit) {
-    if (actor.plan === 'subscriber') {
-      throw Object.assign(new Error('Daily fair-use ceiling reached. This exists only to stop abuse — contact support if you hit it legitimately.'), {
-        status: 429,
-        code: 'fair_use_ceiling',
-      });
-    }
-    const err = new Error(
-      actor.plan === 'anonymous'
-        ? `Free anonymous searches are limited to ${actor.dailyLimit} per day. Create a free account for more, or subscribe for effectively unlimited search.`
-        : `Free accounts are limited to ${actor.dailyLimit} searches per day. Subscribe for effectively unlimited search — subscriptions are the only way this engine makes money, which is why results are never for sale.`,
+    throw Object.assign(
+      new Error(`Fair-use ceiling reached (${actor.dailyLimit} searches today). Northstar is free and has no tiers — this ceiling exists only to stop abuse, and it resets at midnight UTC.`),
+      { status: 429, code: 'fair_use_ceiling' },
     );
-    throw Object.assign(err, { status: 402, code: 'subscription_required', upgrade: { createAccount: 'POST /v1/account', subscribe: 'POST /v1/subscribe' } });
   }
 
   usageData.days[day][actor.id] = used + 1;

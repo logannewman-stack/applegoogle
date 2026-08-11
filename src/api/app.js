@@ -11,9 +11,9 @@ import { search, RANKING_SIGNALS, EXCLUDED_FOREVER } from '../core/ranker.js';
 import { stem } from '../core/tokenizer.js';
 import {
   emptyUsersData, emptyUsageData, createAccount, resolveActor, chargeSearch, usedToday,
-  linkSession, unlinkSession, userForSession, extractApiKey, findUserByKey,
+  linkSession, unlinkSession, userForSession, extractApiKey, findUserByKey, cleanName,
 } from './auth.js';
-import { publicPlans, subscribe, cancelSubscription } from './billing.js';
+import { settingsFor, applySettings, historyEnabled, DEFAULT_SETTINGS } from './settings.js';
 import {
   emptyHistoryData, recordSearch, listHistory, clearHistory, removeHistoryEntry, migrateHistory,
 } from './history.js';
@@ -23,13 +23,20 @@ const MAX_BODY_BYTES = 64 * 1024;
 const SESSION_COOKIE = 'ns_session';
 const QUERY_CACHE_MAX = 200;
 
+// PWA assets served from public/, path-whitelisted.
+const STATIC_FILES = {
+  '/manifest.webmanifest': ['manifest.webmanifest', 'application/manifest+json'],
+  '/icon.svg': ['icon.svg', 'image/svg+xml'],
+  '/apple-touch-icon.png': ['apple-touch-icon.png', 'image/png'],
+};
+
 function sendJson(res, status, body, extraHeaders = {}) {
   const payload = JSON.stringify(body, null, 2);
   res.writeHead(status, {
     'content-type': 'application/json; charset=utf-8',
     'access-control-allow-origin': '*',
     'access-control-allow-headers': 'authorization, content-type',
-    'access-control-allow-methods': 'GET, POST, DELETE, OPTIONS',
+    'access-control-allow-methods': 'GET, POST, PUT, DELETE, OPTIONS',
     ...extraHeaders,
   });
   res.end(payload);
@@ -157,16 +164,20 @@ export async function createApp(overrides = {}) {
       if (q.length > 500) {
         throw Object.assign(new Error('Query too long (max 500 characters).'), { status: 400, code: 'query_too_long' });
       }
-      const page = Math.max(1, Math.min(100, Number(url.searchParams.get('page')) || 1));
-      const perPage = Math.max(1, Math.min(50, Number(url.searchParams.get('per_page')) || 10));
-      const isPrivate = url.searchParams.get('private') === '1';
-
       // A cross-site GET carries the session cookie under SameSite=Lax, so a
       // hostile page could otherwise spend a victim's quota or plant history.
       // Cross-site requests run as anonymous and never touch history.
       const crossSite = (req.headers['sec-fetch-site'] || '') === 'cross-site';
       const session = resolveSession(req);
       const actor = resolveActor(req, url, usersStore.data, config, crossSite ? null : session.id);
+      const settings = settingsFor(actor.user);
+
+      const page = Math.max(1, Math.min(100, Number(url.searchParams.get('page')) || 1));
+      const perPage = Math.max(1, Math.min(50, Number(url.searchParams.get('per_page')) || settings.resultsPerPage));
+      // A search is private if the caller says so — or if the account's
+      // settings say history should never be kept. The server enforces it.
+      const isPrivate = url.searchParams.get('private') === '1' || !settings.saveHistory;
+
       const usage = chargeSearch(usageStore.data, actor);
       usageStore.scheduleSave();
 
@@ -239,7 +250,17 @@ export async function createApp(overrides = {}) {
     },
 
     'GET /v1/plans': async (_req, res) => {
-      sendJson(res, 200, publicPlans());
+      sendJson(res, 200, {
+        pricing: 'free',
+        message: 'Northstar is free right now. No tiers, no premium results, no locked features — everyone gets the same engine.',
+        fairUse: `The only limit is a fair-use ceiling of ${config.dailyFairUseCeiling} searches per day, identical for everyone, to stop abuse.`,
+        future: 'When Northstar matures it will be funded by a simple subscription — never by advertising, never by selling placement or data.',
+        principles: [
+          'No advertising. No sponsored results. No paid ranking — there is no mechanism for it.',
+          'Free means free: no tiers, and your data is not the price.',
+          'If subscriptions arrive one day, results stay identical for everyone either way.',
+        ],
+      });
     },
 
     'GET /v1/stats': async (_req, res) => {
@@ -266,7 +287,7 @@ export async function createApp(overrides = {}) {
       historyStore.scheduleSave();
 
       sendJson(res, 201, {
-        account: { id: user.id, email: user.email, name: user.name, plan: user.plan, createdAt: user.createdAt },
+        account: { id: user.id, email: user.email, name: user.name, createdAt: user.createdAt },
         apiKey,
         signedIn: true,
         note: 'Store this API key now — it is shown only once and kept only as a hash.',
@@ -285,14 +306,20 @@ export async function createApp(overrides = {}) {
       }
       const oldSession = resolveSession(req);
       const newSessionId = randomUUID();
-      migrateHistory(historyStore.data, `sess:${oldSession.id}`, `user:${user.id}`);
+      // Only carry anonymous history in if this account actually keeps
+      // history — migrating into a saveHistory:false account would violate it.
+      if (historyEnabled(user)) {
+        migrateHistory(historyStore.data, `sess:${oldSession.id}`, `user:${user.id}`);
+      } else {
+        clearHistory(historyStore.data, `sess:${oldSession.id}`);
+      }
       unlinkSession(usersStore.data, oldSession.id);
       linkSession(usersStore.data, newSessionId, user.id);
       usersStore.scheduleSave();
       historyStore.scheduleSave();
       sendJson(res, 200, {
         signedIn: true,
-        account: { email: user.email, name: user.name ?? null, plan: user.plan },
+        account: { email: user.email, name: user.name ?? null },
       }, { 'set-cookie': sessionCookieHeader(newSessionId) });
     },
 
@@ -303,12 +330,62 @@ export async function createApp(overrides = {}) {
           id: actor.user.id,
           email: actor.user.email,
           name: actor.user.name ?? null,
-          plan: actor.user.plan,
-          subscription: actor.user.subscription,
           createdAt: actor.user.createdAt,
         },
         usageToday: { used: usedToday(usageStore.data, actor.id), limit: actor.dailyLimit },
       });
+    },
+
+    // Update the account's display name.
+    'PUT /v1/account': async (req, res, url) => {
+      const actor = requireUser(req, url);
+      const body = await readBody(req);
+      actor.user.name = cleanName(body.name);
+      usersStore.scheduleSave();
+      sendJson(res, 200, { account: { email: actor.user.email, name: actor.user.name } });
+    },
+
+    // Delete the account and everything attached to it: keys, session
+    // bindings, history, usage counters. "Your data" means deletable.
+    'DELETE /v1/account': async (req, res, url) => {
+      const actor = requireUser(req, url);
+      const userId = actor.user.id;
+      const users = usersStore.data;
+
+      delete users.byEmail[actor.user.email];
+      for (const [hash, id] of Object.entries(users.byKeyHash)) {
+        if (id === userId) delete users.byKeyHash[hash];
+      }
+      for (const [sess, id] of Object.entries(users.sessionLinks || {})) {
+        if (id === userId) delete users.sessionLinks[sess];
+      }
+      delete users.users[userId];
+      clearHistory(historyStore.data, `user:${userId}`);
+      for (const day of Object.values(usageStore.data.days)) delete day[`user:${userId}`];
+
+      usersStore.scheduleSave();
+      historyStore.scheduleSave();
+      usageStore.scheduleSave();
+      sendJson(res, 200, { deleted: true, note: 'Account, API keys, history, and usage counters are gone. Thank you for sailing with us.' });
+    },
+
+    // Search settings — behavior only, never ranking (see INTEGRITY.md).
+    'GET /v1/settings': async (req, res, url) => {
+      const session = resolveSession(req);
+      const actor = resolveActor(req, url, usersStore.data, config, session.id);
+      sendJson(res, 200, {
+        settings: settingsFor(actor.user),
+        stored: actor.user ? 'account' : 'defaults',
+        available: Object.keys(DEFAULT_SETTINGS),
+      });
+    },
+
+    'PUT /v1/settings': async (req, res, url) => {
+      const actor = requireUser(req, url);
+      const body = await readBody(req);
+      const settings = applySettings(actor.user, body);
+      usersStore.scheduleSave();
+      sendJson(res, 200, { settings, stored: 'account' });
     },
 
     // Who is this browser signed in as? Always 200, so the web app can ask
@@ -318,7 +395,7 @@ export async function createApp(overrides = {}) {
       const user = userForSession(usersStore.data, session.id);
       const headers = session.isNew ? { 'set-cookie': sessionCookieHeader(session.id) } : {};
       sendJson(res, 200, user
-        ? { signedIn: true, account: { email: user.email, name: user.name ?? null, plan: user.plan } }
+        ? { signedIn: true, account: { email: user.email, name: user.name ?? null } }
         : { signedIn: false }, headers);
     },
 
@@ -329,23 +406,6 @@ export async function createApp(overrides = {}) {
       sendJson(res, 200, { signedOut: true });
     },
 
-    'POST /v1/subscribe': async (req, res, url) => {
-      const actor = requireUser(req, url);
-      const body = await readBody(req);
-      const subscription = subscribe(actor.user, body.plan || 'monthly');
-      usersStore.scheduleSave();
-      sendJson(res, 200, {
-        subscription,
-        note: 'Dev-mode activation (no payment collected). See src/api/billing.js for where real payments plug in.',
-      });
-    },
-
-    'POST /v1/subscribe/cancel': async (req, res, url) => {
-      const actor = requireUser(req, url);
-      const subscription = cancelSubscription(actor.user);
-      usersStore.scheduleSave();
-      sendJson(res, 200, { subscription });
-    },
   };
 
   function requireUser(req, url) {
@@ -368,7 +428,7 @@ export async function createApp(overrides = {}) {
         res.writeHead(204, {
           'access-control-allow-origin': '*',
           'access-control-allow-headers': 'authorization, content-type',
-          'access-control-allow-methods': 'GET, POST, DELETE, OPTIONS',
+          'access-control-allow-methods': 'GET, POST, PUT, DELETE, OPTIONS',
         });
         return res.end();
       }
@@ -377,6 +437,18 @@ export async function createApp(overrides = {}) {
         const html = await readFile(INDEX_HTML_PATH);
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
         return res.end(html);
+      }
+
+      // Whitelisted static assets (PWA manifest and icons).
+      if (req.method === 'GET' && STATIC_FILES[url.pathname]) {
+        const [file, type] = STATIC_FILES[url.pathname];
+        try {
+          const data = await readFile(new URL(`../../public/${file}`, import.meta.url));
+          res.writeHead(200, { 'content-type': type, 'cache-control': 'public, max-age=3600' });
+          return res.end(data);
+        } catch {
+          throw Object.assign(new Error('Asset not found.'), { status: 404, code: 'not_found' });
+        }
       }
 
       const handler = handlers[`${req.method} ${url.pathname}`];

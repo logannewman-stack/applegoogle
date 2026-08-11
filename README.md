@@ -2,10 +2,15 @@
 
 **NOBODY CAN BUY THE SKY.**
 
-A search engine built on one idea: **if the searcher pays, the searcher is the
-only customer.** No ads. No sponsored results. No paid placement — there is no
-code path for money to touch a ranking, and [a test enforces that](INTEGRITY.md).
-Revenue is subscriptions, so the engine makes money only by being useful.
+A search engine built on one idea: **the searcher is the only customer.**
+No ads. No sponsored results. No paid placement — there is no code path for
+money to touch a ranking, and [a test enforces that](INTEGRITY.md).
+
+**Northstar is free right now** — no tiers, no premium results, no locked
+features. Everyone gets the same engine. The only limit is a high anti-abuse
+fair-use ceiling. (If it is ever funded, it will be by a simple subscription
+— never advertising, never selling placement or data. Results stay identical
+for everyone either way.)
 
 And because trust needs receipts, **every result explains itself**: Northstar
 tells you exactly why each page was chosen for your query — which of your
@@ -27,7 +32,7 @@ standard-library Node.
 ```bash
 npm run seed     # load sample documents so search works immediately
 npm start        # http://127.0.0.1:3000
-npm test         # 50 tests, including the ranking-integrity test
+npm test         # 54 tests, including the ranking-integrity test
 ```
 
 Open http://127.0.0.1:3000 and search for *pour over coffee*, *closures*, or
@@ -52,13 +57,19 @@ Open http://127.0.0.1:3000 and search for *pour over coffee*, *closures*, or
   anonymous `ns_session` cookie — so *you* can find your way back. It is never
   used for ranking, never for ads (there are none), and one click clears it.
   **Private mode** (footer toggle, or `&private=1`) skips history entirely.
+- **Customizable.** A Settings sheet lets you tune the engine to you: results
+  per page, open links in a new tab, auto-expand every "why" receipt,
+  suggestions on/off, save-history on/off (server-enforced), and a
+  light/dark/system theme. Signed in, settings follow you across devices.
+- **Installable.** A web app manifest, apple-touch-icon, safe-area layout and
+  standalone meta make Northstar an add-to-home-screen app on iOS that runs
+  full screen. `ios/` holds a SwiftUI `WKWebView` shell for the App Store path.
 - **Fast.** Repeated queries answer from an in-memory LRU cache (`x-cache:
   hit`), invalidated automatically whenever the index changes; IDF is computed
   once per query; suggestions come from a cached frequency-sorted dictionary.
-- **Subscription-funded.** Anonymous visitors get 25 searches/day, free
-  accounts 100, subscribers effectively unlimited. When an allowance runs out
-  the API answers `402` with the upgrade path — that response *is* the
-  business model.
+- **Free, no tiers.** Everyone gets the same engine. The only refusal is a
+  fair-use ceiling (default 2000 searches/day, identical for all) that answers
+  `429` purely to stop abuse — there is no paywall and no `402`.
 
 ## Why a result is chosen (the receipt)
 
@@ -109,15 +120,15 @@ so Node's fetch uses `HTTPS_PROXY`.
                  ┌─────────────────────────────────────────┐
                  │            HTTP API (node:http)         │
                  │  /v1/search (+LRU cache) · /v1/suggest  │
-                 │  /v1/ranking · /v1/history · accounts   │
-                 │  API keys · subscriptions · sessions    │
+                 │  /v1/ranking · /v1/history · /v1/settings│
+                 │  accounts · API keys · sessions          │
                  └──────────────────┬──────────────────────┘
                                     │
                                     ▼
                  ┌─────────────────────────────────────────┐
                  │        Web app (public/index.html)      │
-                 │  monochrome · tabs w/ cached results ·  │
-                 │  history · why-panels · private mode    │
+                 │  monochrome · tabs · story onboarding · │
+                 │  settings sheet · suggestions · PWA     │
                  └─────────────────────────────────────────┘
 ```
 
@@ -127,9 +138,10 @@ so Node's fetch uses `HTTPS_PROXY`.
 | `src/core/index.js` | Inverted index, field hit tracking, PageRank + inlinks |
 | `src/core/ranker.js` | Scoring, snippets, diversity, `why` receipts — the trust core |
 | `src/crawler/` | robots.txt parser, HTML extraction, polite BFS crawler |
-| `src/api/` | HTTP app, accounts/keys, subscriptions, history, sessions |
-| `public/index.html` | The Northstar web app |
-| `test/` | 50 tests, run with `npm test` |
+| `src/api/` | HTTP app, accounts/keys, settings, history, sessions |
+| `public/index.html` | The Northstar web app (installable PWA) |
+| `ios/` | SwiftUI `WKWebView` shell for the App Store path |
+| `test/` | 54 tests, run with `npm test` |
 
 ## API
 
@@ -160,14 +172,20 @@ curl -X POST localhost:3000/v1/session/signin \
 # Who is this browser signed in as? (always 200)
 curl 'localhost:3000/v1/session'
 
-# Subscribe (dev-mode activation until payments are wired in)
-curl -X POST localhost:3000/v1/subscribe \
-  -H 'Authorization: Bearer ns_…' -H 'content-type: application/json' \
-  -d '{"plan":"monthly"}'
+# Customize the engine (account-scoped; behavior only, never ranking)
+curl 'localhost:3000/v1/settings' -H 'Authorization: Bearer ns_…'
+curl -X PUT 'localhost:3000/v1/settings' -H 'Authorization: Bearer ns_…' \
+  -H 'content-type: application/json' -d '{"resultsPerPage":20,"theme":"dark","saveHistory":false}'
+
+# Rename or delete your account (delete wipes keys, history, settings)
+curl -X PUT    'localhost:3000/v1/account' -H 'Authorization: Bearer ns_…' \
+  -H 'content-type: application/json' -d '{"name":"Nova"}'
+curl -X DELETE 'localhost:3000/v1/account' -H 'Authorization: Bearer ns_…'
 ```
 
 Also: `GET /v1/suggest?q=`, `GET /v1/plans`, `GET /v1/stats`, `GET /v1/account`,
-`POST /v1/account/logout`, `POST /v1/subscribe/cancel`, `GET /health`.
+`POST /v1/account/logout`, `GET /health`. Installable PWA assets:
+`/manifest.webmanifest`, `/apple-touch-icon.png`, `/icon.svg`.
 
 Security posture for browser sessions: the session id rotates whenever a
 session gains an account (fixation defense), and cross-site requests are
@@ -178,18 +196,24 @@ treated as anonymous and never touch history or account quotas
 
 - History exists for you, keyed to your account or an anonymous first-party
   `ns_session` cookie (a random id, nothing else, httpOnly).
+- Turn it off in Settings and the **server** treats every search as private —
+  the switch is enforced, not cosmetic.
 - It is deletable in one call, capped at 200 entries, expired after 90 days.
-- Usage counters exist only to enforce daily limits and are kept 7 days.
-- Nothing is sold, because the subscription *is* the revenue.
+- Deleting your account erases keys, history, settings, and usage counters.
+- Usage counters exist only to enforce the fair-use ceiling and are kept 7 days.
+- Nothing is sold — there are no ads and no data business.
 
 ## What's honest about v1 (and the path to v2)
 
 - **Storage** is JSON on disk with atomic writes — perfect for prototyping and
   tens of thousands of pages. When the index outgrows RAM: move `JsonStore`
   behind SQLite, then Postgres; the interfaces are already in place.
-- **Payments** are not wired. `POST /v1/subscribe` activates in dev-mode so the
-  whole flow works end to end. `src/api/billing.js` marks exactly where Stripe
-  Checkout + webhook activation plug in.
+- **Free, no payments.** Northstar is free with a single fair-use ceiling.
+  `src/api/billing.js` is the unplugged seam where a future subscription
+  (Stripe Checkout + webhook activation) would attach — never advertising.
+- **iOS** ships two ways: install the PWA today (Add to Home Screen), or build
+  the SwiftUI shell in `ios/` in Xcode on a Mac (its sources aren't compiled
+  here — see `ios/README.md`).
 - **HTML extraction** is regex-based: predictable and fast, replaceable by a
   real parser behind the same function in `src/crawler/extract.js`.
 - **Crawl scale** is single-process. The queue/politeness logic is isolated in

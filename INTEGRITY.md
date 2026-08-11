@@ -41,7 +41,11 @@ Every signal is earned relevance. The complete list is public at `GET /v1/rankin
 
 ## Why the business model makes this possible
 
-Advertising-funded search serves two customers with opposite interests.
-This engine is **subscription-funded**: the person searching is the only
-customer, so being maximally useful to them is the entire business.
-Revenue comes from `POST /v1/subscribe` — never from the results page.
+Advertising-funded search serves two customers with opposite interests: the
+searcher and the advertiser. Northstar has no advertiser. It is **free right
+now**, with no tiers and a single anti-abuse fair-use ceiling identical for
+everyone (`GET /v1/plans` states this). If it is ever funded, it will be by a
+plain subscription — never advertising, never paid placement, never selling
+data — and results stay identical for everyone regardless. Either way the
+searcher is the only customer, which is exactly what lets the ranking answer
+to them alone.

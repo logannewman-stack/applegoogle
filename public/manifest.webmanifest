@@ -1,0 +1,13 @@
+{
+  "name": "Northstar",
+  "short_name": "Northstar",
+  "description": "Ad-free search that explains every result. Nobody can buy the sky.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#111111",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}

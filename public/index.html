@@ -2,9 +2,19 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Northstar</title>
 <link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="black" d="M12 1l2.4 8.6L23 12l-8.6 2.4L12 23l-2.4-8.6L1 12l8.6-2.4z"/></svg>'>
+<!-- Installable app: add-to-home-screen on iOS runs standalone, full screen -->
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<!-- "default" keeps iOS drawing its own adaptive status bar (dark glyphs on
+     light, light on dark) instead of white-on-white in standalone light mode -->
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Northstar">
+<meta name="theme-color" id="themeColor" content="#ffffff">
 <style>
   :root {
     --ink: #111111;
@@ -16,6 +26,9 @@
   @media (prefers-color-scheme: dark) {
     :root { --ink: #f2f2f2; --paper: #0d0d0d; --faint: #9a9a9a; --line: #262626; --wash: #171717; }
   }
+  /* Explicit theme choice from Settings beats the system preference. */
+  :root[data-theme="light"] { --ink: #111111; --paper: #ffffff; --faint: #757575; --line: #e2e2e2; --wash: #f6f6f6; }
+  :root[data-theme="dark"] { --ink: #f2f2f2; --paper: #0d0d0d; --faint: #9a9a9a; --line: #262626; --wash: #171717; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { height: 100%; }
   body {
@@ -26,6 +39,10 @@
     display: flex;
     flex-direction: column;
     align-items: center;
+    /* Native feel on notched phones: respect the safe areas. */
+    padding-top: env(safe-area-inset-top);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
   }
 
   /* ── Tab bar ─────────────────────────────────────────────── */
@@ -172,11 +189,86 @@
   .empty { color: var(--faint); padding: 2rem 0; text-align: center; font-size: 0.95rem; }
 
   footer {
-    width: min(660px, 92vw); padding: 1.3rem 0 1.6rem;
+    width: min(660px, 92vw); padding: 1.3rem 0 calc(1.6rem + env(safe-area-inset-bottom));
     display: flex; flex-direction: column; gap: 0.35rem; align-items: center;
     color: var(--faint); font-size: 0.75rem; text-align: center; letter-spacing: 0.01em;
   }
-  footer .links { display: flex; gap: 1rem; }
+  footer .links { display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center; }
+
+  /* ── Suggestions dropdown ────────────────────────────────── */
+  .searchwrap { position: relative; }
+  .suggest {
+    position: absolute; top: calc(100% + 6px); left: 0.9rem; right: 0.9rem; z-index: 10;
+    background: var(--paper); border: 1px solid var(--line); border-radius: 16px;
+    overflow: hidden; box-shadow: 0 10px 34px rgba(0,0,0,0.10);
+  }
+  .suggest button {
+    display: flex; align-items: center; gap: 0.6rem; width: 100%; text-align: left;
+    padding: 0.62rem 1.05rem; border: none; background: none; color: var(--ink);
+    font: inherit; font-size: 0.95rem; cursor: pointer;
+  }
+  .suggest button svg { flex: none; opacity: 0.4; }
+  .suggest button:hover, .suggest button.sel { background: var(--wash); }
+
+  /* ── Settings sheet (iOS-style) ──────────────────────────── */
+  #sheetBackdrop {
+    position: fixed; inset: 0; z-index: 40;
+    background: rgba(0,0,0,0.35); opacity: 0; transition: opacity 0.25s ease;
+  }
+  #sheet {
+    position: fixed; left: 50%; bottom: 0; z-index: 41;
+    width: min(30rem, 100vw); max-height: 86dvh; overflow-y: auto;
+    background: var(--paper); border: 1px solid var(--line); border-bottom: none;
+    border-radius: 18px 18px 0 0;
+    padding: 0.5rem 1.1rem calc(1.5rem + env(safe-area-inset-bottom));
+    transform: translate(-50%, 105%); transition: transform 0.3s ease;
+  }
+  body.sheet-open #sheet { transform: translate(-50%, 0); }
+  body.sheet-open #sheetBackdrop { opacity: 1; }
+  .grabber { width: 2.3rem; height: 4px; border-radius: 2px; background: var(--line); margin: 0.45rem auto 0.85rem; }
+  .sheet-title { font-weight: 600; font-size: 1.02rem; text-align: center; margin-bottom: 1rem; }
+  .sgroup-label {
+    font-size: 0.72rem; color: var(--faint); text-transform: uppercase;
+    letter-spacing: 0.08em; margin: 0 0.4rem 0.35rem;
+  }
+  .sgroup { border: 1px solid var(--line); border-radius: 12px; margin-bottom: 1.05rem; overflow: hidden; }
+  .srow {
+    display: flex; align-items: center; justify-content: space-between; gap: 0.8rem;
+    padding: 0.72rem 0.95rem; border-bottom: 1px solid var(--line); font-size: 0.92rem;
+  }
+  .srow:last-child { border-bottom: none; }
+  .srow .hint { color: var(--faint); font-size: 0.74rem; margin-top: 2px; line-height: 1.4; }
+  .srow input[type="text"], .srow input[type="email"] {
+    text-align: right; font-size: 0.92rem; max-width: 55%;
+  }
+  .srow .keycode {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.76rem;
+    background: var(--wash); border: 1px solid var(--line); border-radius: 8px;
+    padding: 0.45rem 0.65rem; user-select: all; overflow-wrap: anywhere;
+  }
+  .switch {
+    position: relative; width: 46px; height: 27px; flex: none; border-radius: 999px;
+    background: var(--line); border: none; cursor: pointer; transition: background 0.2s ease;
+  }
+  .switch::after {
+    content: ''; position: absolute; top: 3px; left: 3px; width: 21px; height: 21px;
+    border-radius: 50%; background: var(--paper); transition: left 0.2s ease;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  }
+  .switch[aria-checked="true"] { background: var(--ink); }
+  .switch[aria-checked="true"]::after { left: 22px; }
+  .seg { display: flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; flex: none; }
+  .seg button {
+    border: none; background: none; color: var(--faint); font: inherit; font-size: 0.8rem;
+    padding: 0.36rem 0.72rem; cursor: pointer; border-right: 1px solid var(--line);
+  }
+  .seg button:last-child { border-right: none; }
+  .seg button.on { background: var(--ink); color: var(--paper); }
+  .srow .act {
+    border: 1px solid var(--line); background: none; color: var(--ink); border-radius: 999px;
+    padding: 0.35rem 0.95rem; font: inherit; font-size: 0.84rem; cursor: pointer; flex: none;
+  }
+  .srow .act:hover { border-color: var(--ink); }
 
   /* ══ The story — first-run cinematic onboarding ═══════════ */
   #story {
@@ -191,7 +283,7 @@
   #sky { position: absolute; inset: 0; width: 100%; height: 100%; }
 
   #storySkip {
-    position: absolute; top: 1.1rem; right: 1.4rem; z-index: 3;
+    position: absolute; top: calc(1.1rem + env(safe-area-inset-top)); right: 1.4rem; z-index: 3;
     border: none; background: none; color: rgba(244,244,242,0.68);
     font: inherit; font-size: 0.8rem; cursor: pointer;
     text-decoration: underline; text-underline-offset: 3px;
@@ -311,9 +403,13 @@
     <div class="greeting" id="greeting"></div>
 
     <form id="form" autocomplete="off">
-      <div class="box">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
-        <input id="q" type="text" placeholder="Search">
+      <div class="searchwrap">
+        <div class="box">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
+          <input id="q" type="text" placeholder="Search" aria-label="Search" autocomplete="off"
+                 role="combobox" aria-expanded="false" aria-controls="suggest" aria-autocomplete="list">
+        </div>
+        <div class="suggest" id="suggest" hidden role="listbox" aria-label="Suggestions"></div>
       </div>
     </form>
 
@@ -340,6 +436,36 @@
     </div>
   </footer>
 
+  <!-- ══ Settings sheet ═══════════════════════════════════════ -->
+  <div id="sheetBackdrop" hidden></div>
+  <div id="sheet" role="dialog" aria-modal="true" aria-label="Settings" hidden>
+    <div class="grabber" aria-hidden="true"></div>
+    <div class="sheet-title">Settings</div>
+
+    <div class="sgroup-label">Account</div>
+    <div class="sgroup" id="accountGroup"></div>
+
+    <div class="sgroup-label">Search</div>
+    <div class="sgroup">
+      <div class="srow"><div>Results per page</div><div class="seg" id="segPerPage"></div></div>
+      <div class="srow"><div>Open links in a new tab</div><button class="switch" id="swNewTab" role="switch" aria-label="Open links in a new tab"></button></div>
+      <div class="srow"><div>Show reasoning automatically<div class="hint">Every result's "why" panel opens expanded</div></div><button class="switch" id="swWhy" role="switch" aria-label="Show reasoning automatically"></button></div>
+      <div class="srow"><div>Suggestions while typing</div><button class="switch" id="swSuggest" role="switch" aria-label="Suggestions while typing"></button></div>
+    </div>
+
+    <div class="sgroup-label">Privacy</div>
+    <div class="sgroup">
+      <div class="srow"><div>Save search history<div class="hint">Off means every search is private, enforced by the server</div></div><button class="switch" id="swHistory" role="switch" aria-label="Save search history"></button></div>
+      <div class="srow"><div>Clear all history</div><button class="act" id="sheetClearHistory">Clear</button></div>
+      <div class="srow"><div>Replay the story</div><button class="act" id="sheetReplay">Play</button></div>
+    </div>
+
+    <div class="sgroup-label">Appearance</div>
+    <div class="sgroup">
+      <div class="srow"><div>Theme</div><div class="seg" id="segTheme"></div></div>
+    </div>
+  </div>
+
   <!-- ══ First light: the story ═══════════════════════════════ -->
   <div id="story" role="dialog" aria-modal="true" aria-label="Welcome to Northstar" hidden>
     <canvas id="sky" aria-hidden="true"></canvas>
@@ -360,7 +486,7 @@
       { id: 'problem', headline: 'Then, quietly, it was sold',
         body: 'Every answer had a sponsor. Every question had a price.\nNot evil. Just a business model. But you were not the customer — you were the inventory.' },
       { id: 'promise', headline: 'Here, you are the only customer',
-        body: 'You pay a small subscription, so Northstar answers to you alone.\nEvery result carries a receipt: the exact reason it was chosen. Nothing here can be bought.' },
+        body: 'Northstar is free, and no ads pay for it — none ever will.\nEvery result carries a receipt: the exact reason it was chosen. Nothing here can be bought.' },
       { id: 'name', headline: 'What should we call you?',
         body: 'Only so we can greet you.\nYour name stays on this device unless you choose to make an account.',
         placeholder: 'Your first name', primary: "That's me", secondary: "I'd rather not say",
@@ -409,18 +535,30 @@
   const KEY_ONBOARDED = 'northstar.onboarded';
   const KEY_NAME = 'northstar.name';
   const KEY_INTERESTS = 'northstar.interests';
+  const KEY_SETTINGS = 'northstar.settings.v1';
+
+  const DEFAULT_SETTINGS = {
+    resultsPerPage: 10,
+    openInNewTab: false,
+    autoExpandWhy: false,
+    suggestions: true,
+    saveHistory: true,
+    theme: 'system',
+  };
 
   let state = { tabs: [], active: null };
   let privateMode = false;
+  let settings = { ...DEFAULT_SETTINGS };
 
   const $ = (id) => document.getElementById(id);
   const els = {
     tabbar: $('tabbar'), main: $('main'), brand: $('brand'), form: $('form'), q: $('q'),
     greeting: $('greeting'), firstStars: $('firstStars'), firstStarsLead: $('firstStarsLead'), starChips: $('starChips'),
     historyBlock: $('historyBlock'), historyList: $('historyList'), clearHistory: $('clearHistory'),
-    meta: $('meta'), results: $('results'),
+    meta: $('meta'), results: $('results'), suggest: $('suggest'),
     privateToggle: $('privateToggle'), replayStory: $('replayStory'), accountStatus: $('accountStatus'),
     story: $('story'), sky: $('sky'), storySkip: $('storySkip'), scene: $('scene'), dots: $('dots'),
+    sheet: $('sheet'), sheetBackdrop: $('sheetBackdrop'), accountGroup: $('accountGroup'),
   };
 
   const uid = () => Math.random().toString(36).slice(2, 10);
@@ -475,6 +613,18 @@
     plus.setAttribute('aria-label', 'New tab');
     plus.addEventListener('click', newTab);
     els.tabbar.appendChild(plus);
+
+    const spacer = document.createElement('span');
+    spacer.style.cssText = 'flex:1;min-width:0.5rem';
+    els.tabbar.appendChild(spacer);
+
+    const gear = document.createElement('button');
+    gear.className = 'newtab';
+    gear.setAttribute('aria-label', 'Settings');
+    gear.title = 'Settings';
+    gear.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
+    gear.addEventListener('click', openSheet);
+    els.tabbar.appendChild(gear);
   }
 
   function newTab() {
@@ -558,14 +708,16 @@
       return;
     }
 
+    const linkTarget = settings.openInNewTab ? ' target="_blank"' : '';
+    const whyOpen = settings.autoExpandWhy;
     els.results.innerHTML = data.results.map((r, i) => `
       <div class="result">
         <div class="site">${escapeHtml(r.domain)}</div>
-        <a class="title" href="${escapeHtml(r.url)}" rel="noopener">${escapeHtml(r.title)}</a>
+        <a class="title" href="${escapeHtml(r.url)}" rel="noopener"${linkTarget}>${escapeHtml(r.title)}</a>
         <div class="snippet">${highlight(r.snippet, data.normalizedTerms || [])}</div>
         ${r.why ? `
-          <button class="whybtn" data-why="${i}" aria-expanded="false">Why this result ▸</button>
-          <div class="why" id="why-${i}">
+          <button class="whybtn" data-why="${i}" aria-expanded="${whyOpen}">Why this result ${whyOpen ? '▾' : '▸'}</button>
+          <div class="why${whyOpen ? ' open' : ''}" id="why-${i}">
             ${escapeHtml(r.why.summary)}
             <div class="factors">Text relevance ${r.why.factors.textRelevance}
               · link authority ×${r.why.factors.linkAuthority}
@@ -610,9 +762,11 @@
     // The user may switch tabs while the fetch is in flight — only touch the
     // visible DOM if this tab is still the active one when it resolves.
     const stillActive = () => state.active === tab.id;
+    hideSuggest();
+    const isPrivate = privateMode || !settings.saveHistory;
     let data;
     try {
-      const res = await fetch(`/v1/search?q=${encodeURIComponent(q)}${privateMode ? '&private=1' : ''}`);
+      const res = await fetch(`/v1/search?q=${encodeURIComponent(q)}&per_page=${settings.resultsPerPage}${isPrivate ? '&private=1' : ''}`);
       data = await res.json().catch(() => ({}));
       if (!res.ok) {
         tab.data = null;
@@ -696,16 +850,289 @@
     try {
       const res = await fetch('/v1/session');
       const data = await res.json();
-      if (!res.ok || !data.signedIn) { sessionAccount = null; els.accountStatus.hidden = true; return; }
+      if (!res.ok || !data.signedIn) { sessionAccount = null; els.accountStatus.hidden = true; renderAccountGroup(); return; }
       sessionAccount = data.account;
       els.accountStatus.hidden = false;
       els.accountStatus.textContent = `${data.account.email} · Sign out`;
-      els.accountStatus.onclick = async () => {
-        await fetch('/v1/account/logout', { method: 'POST' });
+      els.accountStatus.onclick = signOut;
+      renderAccountGroup();
+      await pullServerSettings();
+    } catch { sessionAccount = null; els.accountStatus.hidden = true; }
+  }
+
+  async function signOut() {
+    await fetch('/v1/account/logout', { method: 'POST' }).catch(() => {});
+    sessionAccount = null;
+    els.accountStatus.hidden = true;
+    renderAccountGroup();
+  }
+
+  // ════ Settings ═══════════════════════════════════════════════
+  function loadSettingsLocal() {
+    try { settings = { ...DEFAULT_SETTINGS, ...(JSON.parse(localStorage.getItem(KEY_SETTINGS)) || {}) }; }
+    catch { settings = { ...DEFAULT_SETTINGS }; }
+  }
+
+  function applySettingsEffects() {
+    if (settings.theme === 'system') delete document.documentElement.dataset.theme;
+    else document.documentElement.dataset.theme = settings.theme;
+    // Keep the browser/PWA chrome color in step with the resolved theme.
+    const dark = settings.theme === 'dark' ||
+      (settings.theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    const tc = $('themeColor');
+    if (tc) tc.setAttribute('content', dark ? '#0d0d0d' : '#ffffff');
+    syncSheetControls();
+  }
+
+  // Persist a change: locally always, to the account when signed in.
+  function updateSettings(patch) {
+    settings = { ...settings, ...patch };
+    try { localStorage.setItem(KEY_SETTINGS, JSON.stringify(settings)); } catch {}
+    if (sessionAccount) {
+      fetch('/v1/settings', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(patch),
+      }).catch(() => {});
+    }
+    applySettingsEffects();
+  }
+
+  // Signed in on another device? Account settings win over local ones.
+  async function pullServerSettings() {
+    if (!sessionAccount) return;
+    try {
+      const res = await fetch('/v1/settings');
+      const data = await res.json();
+      if (res.ok && data.stored === 'account') {
+        settings = { ...DEFAULT_SETTINGS, ...data.settings };
+        try { localStorage.setItem(KEY_SETTINGS, JSON.stringify(settings)); } catch {}
+        applySettingsEffects();
+      }
+    } catch {}
+  }
+
+  // Adopt local preferences into a BRAND-NEW account (which has none yet),
+  // then treat the server as source of truth. Awaited so no later pull races
+  // ahead of it. Never called for an existing account — that would clobber
+  // the settings the account already saved.
+  async function pushLocalSettings() {
+    if (!sessionAccount) return;
+    try {
+      await fetch('/v1/settings', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(settings),
+      });
+    } catch {}
+  }
+
+  // ════ Settings sheet ═════════════════════════════════════════
+  let sheetOpen = false;
+  let sheetKeyShown = false; // a one-time key is displayed — don't close over it
+
+  function openSheet() {
+    if (sheetOpen) return;
+    sheetOpen = true;
+    sheetKeyShown = false;
+    els.sheet.hidden = false;
+    els.sheetBackdrop.hidden = false;
+    setBackgroundInert(true);
+    renderAccountGroup();
+    syncSheetControls();
+    requestAnimationFrame(() => {
+      document.body.classList.add('sheet-open');
+      // Move focus into the sheet so keyboard/AT users land inside the dialog.
+      const first = els.sheet.querySelector('button, input, [tabindex]');
+      if (first) setTimeout(() => first.focus(), reducedMotion ? 0 : 200);
+    });
+  }
+
+  function closeSheet() {
+    if (!sheetOpen || sheetKeyShown) return; // never lose an unsaved one-time key
+    sheetOpen = false;
+    document.body.classList.remove('sheet-open');
+    setBackgroundInert(false);
+    setTimeout(() => {
+      els.sheet.hidden = true;
+      els.sheetBackdrop.hidden = true;
+    }, reducedMotion ? 0 : 320);
+  }
+
+  function setSwitch(id, on) {
+    $(id).setAttribute('aria-checked', String(!!on));
+  }
+
+  function renderSeg(id, options, current, label, onPick) {
+    const seg = $(id);
+    seg.innerHTML = '';
+    for (const opt of options) {
+      const b = document.createElement('button');
+      b.textContent = label(opt);
+      b.className = String(opt) === String(current) ? 'on' : '';
+      b.addEventListener('click', () => onPick(opt));
+      seg.appendChild(b);
+    }
+  }
+
+  function syncSheetControls() {
+    if (!els.sheet) return;
+    setSwitch('swNewTab', settings.openInNewTab);
+    setSwitch('swWhy', settings.autoExpandWhy);
+    setSwitch('swSuggest', settings.suggestions);
+    setSwitch('swHistory', settings.saveHistory);
+    renderSeg('segPerPage', [10, 20, 30], settings.resultsPerPage, (v) => String(v),
+      (v) => updateSettings({ resultsPerPage: v }));
+    renderSeg('segTheme', ['system', 'light', 'dark'], settings.theme,
+      (v) => v[0].toUpperCase() + v.slice(1), (v) => updateSettings({ theme: v }));
+  }
+
+  function wireSwitch(id, key) {
+    $(id).addEventListener('click', () => updateSettings({ [key]: !settings[key] }));
+  }
+
+  // The Account group: sign in / create from Settings, manage when signed in.
+  function renderAccountGroup() {
+    const g = els.accountGroup;
+    if (!g) return;
+    if (sessionAccount) {
+      g.innerHTML = `
+        <div class="srow"><div>Signed in as</div><div>${escapeHtml(sessionAccount.email)}</div></div>
+        <div class="srow"><div>Name<div class="hint">Used for your greeting</div></div>
+          <input type="text" id="setName" placeholder="Add a name" value="${escapeHtml(localStorage.getItem(KEY_NAME) || sessionAccount.name || '')}"></div>
+        <div class="srow"><div>Sign out of this browser</div><button class="act" id="setSignOut">Sign out</button></div>
+        <div class="srow"><div>Delete account &amp; data<div class="hint">Keys, history, settings — everything, permanently</div></div>
+          <button class="act" id="setDelete">Delete</button></div>`;
+      const nameInput = $('setName');
+      nameInput.addEventListener('change', async () => {
+        const name = nameInput.value.trim().slice(0, 60);
+        if (name) localStorage.setItem(KEY_NAME, name);
+        else localStorage.removeItem(KEY_NAME);
+        await fetch('/v1/account', {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ name }),
+        }).catch(() => {});
+        if (els.main.className === 'home-mode') els.greeting.textContent = greetingText();
+      });
+      $('setSignOut').addEventListener('click', async () => { await signOut(); });
+      const delBtn = $('setDelete');
+      delBtn.addEventListener('click', async () => {
+        if (delBtn.dataset.armed !== '1') {
+          delBtn.dataset.armed = '1';
+          delBtn.textContent = 'Tap again to erase everything';
+          setTimeout(() => { delBtn.dataset.armed = ''; delBtn.textContent = 'Delete'; }, 4000);
+          return;
+        }
+        await fetch('/v1/account', { method: 'DELETE' }).catch(() => {});
         sessionAccount = null;
         els.accountStatus.hidden = true;
-      };
-    } catch { sessionAccount = null; els.accountStatus.hidden = true; }
+        renderAccountGroup();
+        refreshHistory();
+      });
+    } else {
+      g.innerHTML = `
+        <div class="srow"><div>Create an account<div class="hint">History and settings follow you across devices</div></div>
+          <input type="email" id="setEmail" placeholder="you@anywhere.com"></div>
+        <div class="srow"><div class="hint" id="setAccountMsg" role="alert" style="margin:0"></div>
+          <button class="act" id="setCreate">Create</button></div>
+        <div class="srow"><div>Have a key?<div class="hint">Sign in with the key you saved</div></div>
+          <input type="text" id="setKey" placeholder="ns_…"></div>
+        <div class="srow"><div class="hint" style="margin:0">Signing in binds this browser only.</div>
+          <button class="act" id="setSignin">Sign in</button></div>`;
+      $('setCreate').addEventListener('click', async () => {
+        const email = $('setEmail').value.trim();
+        const msg = $('setAccountMsg');
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { msg.textContent = 'That email doesn’t look complete.'; return; }
+        try {
+          const res = await fetch('/v1/account', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ email, name: localStorage.getItem(KEY_NAME) || undefined }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) { msg.textContent = data.error?.message || 'Something went wrong.'; return; }
+          sessionAccount = { email: data.account.email, name: data.account.name };
+          // A new account starts with no settings — adopt the local ones.
+          await pushLocalSettings();
+          sheetKeyShown = true; // guard: Escape/backdrop can't discard the key now
+          g.innerHTML = `
+            <div class="srow"><div>Your key — shown once, save it now<div class="hint">We keep no copy. It signs you in on other devices.</div></div></div>
+            <div class="srow"><div class="keycode">${escapeHtml(data.apiKey)}</div></div>
+            <div class="srow"><div></div><button class="act" id="setKeySaved">I saved it</button></div>`;
+          $('setKeySaved').addEventListener('click', () => { sheetKeyShown = false; refreshAccountStatus(); });
+          $('setKeySaved').focus();
+        } catch { msg.textContent = 'Could not reach the server.'; }
+      });
+      $('setSignin').addEventListener('click', async () => {
+        const apiKey = $('setKey').value.trim();
+        const msg = $('setAccountMsg');
+        if (!apiKey) { msg.textContent = 'Paste the key you saved.'; return; }
+        try {
+          const res = await fetch('/v1/session/signin', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ apiKey }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || !data.signedIn) { msg.textContent = data.error?.message || 'That key didn’t match.'; return; }
+          sessionAccount = data.account;
+          // Existing account: its saved settings win — pull, never push.
+          refreshAccountStatus();
+          renderAccountGroup();
+        } catch { msg.textContent = 'Could not reach the server.'; }
+      });
+    }
+  }
+
+  // ════ Suggestions while typing ═══════════════════════════════
+  let suggestTimer = null;
+  let suggestSel = -1;
+
+  function hideSuggest() {
+    els.suggest.hidden = true;
+    els.suggest.innerHTML = '';
+    suggestSel = -1;
+    els.q.setAttribute('aria-expanded', 'false');
+    els.q.removeAttribute('aria-activedescendant');
+  }
+
+  function highlightSuggest() {
+    const items = [...els.suggest.children];
+    items.forEach((el, i) => el.classList.toggle('sel', i === suggestSel));
+    if (suggestSel >= 0) els.q.setAttribute('aria-activedescendant', `sg-${suggestSel}`);
+    else els.q.removeAttribute('aria-activedescendant');
+  }
+
+  function renderSuggest(items) {
+    if (items.length === 0) return hideSuggest();
+    els.suggest.innerHTML = items.map((s, i) => `
+      <button type="button" role="option" id="sg-${i}" tabindex="-1">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
+        <span>${escapeHtml(s)}</span></button>`).join('');
+    [...els.suggest.children].forEach((btn, i) => {
+      btn.addEventListener('mousedown', (e) => e.preventDefault()); // keep input focus
+      btn.addEventListener('click', () => {
+        els.q.value = items[i];
+        hideSuggest();
+        runSearch(items[i]);
+      });
+    });
+    els.suggest.hidden = false;
+    suggestSel = -1;
+    els.q.setAttribute('aria-expanded', 'true');
+    els.q.removeAttribute('aria-activedescendant');
+  }
+
+  async function fetchSuggest() {
+    const q = els.q.value.trim();
+    if (!q || !settings.suggestions) return hideSuggest();
+    try {
+      const res = await fetch(`/v1/suggest?q=${encodeURIComponent(q)}`);
+      const { suggestions } = await res.json();
+      if (document.activeElement !== els.q) return; // user moved on
+      renderSuggest((suggestions || []).filter((s) => s.toLowerCase() !== q.toLowerCase()).slice(0, 6));
+    } catch { hideSuggest(); }
   }
 
   // ════ The story engine ═══════════════════════════════════════
@@ -888,7 +1315,8 @@
             err.textContent = data.error?.message || 'Something went wrong.';
           } else {
             story.busy = false;
-            sessionAccount = data.account ? { email: data.account.email, name: data.account.name, plan: data.account.plan } : sessionAccount;
+            sessionAccount = data.account ? { email: data.account.email, name: data.account.name } : sessionAccount;
+            pushLocalSettings();
             showKeyPanel(data.apiKey);
             return;
           }
@@ -1090,6 +1518,59 @@
     if (q) runSearch(q);
   });
 
+  // Suggestions: debounce while typing, arrow keys to pick.
+  els.q.addEventListener('input', () => {
+    clearTimeout(suggestTimer);
+    if (!settings.suggestions) return;
+    suggestTimer = setTimeout(fetchSuggest, 160);
+  });
+  // Hide suggestions on blur — unless focus moved into the dropdown itself.
+  els.q.addEventListener('blur', (e) => {
+    if (els.suggest.contains(e.relatedTarget)) return;
+    setTimeout(hideSuggest, 150);
+  });
+  els.q.addEventListener('keydown', (e) => {
+    if (els.suggest.hidden) return;
+    const items = [...els.suggest.children];
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      suggestSel = suggestSel >= items.length - 1 ? 0 : suggestSel + 1;
+      highlightSuggest();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      // From the unselected state (-1), wrap to the LAST item.
+      suggestSel = suggestSel <= 0 ? items.length - 1 : suggestSel - 1;
+      highlightSuggest();
+    } else if (e.key === 'Enter' && suggestSel >= 0) {
+      e.preventDefault();
+      items[suggestSel].click();
+    } else if (e.key === 'Escape') {
+      hideSuggest();
+    }
+  });
+
+  // Settings sheet wiring.
+  els.sheetBackdrop.addEventListener('click', closeSheet);
+  // Keep Tab cycling inside the sheet while it's open.
+  els.sheet.addEventListener('keydown', (e) => {
+    if (e.key !== 'Tab' || !sheetOpen) return;
+    const f = [...els.sheet.querySelectorAll('button, input, [tabindex]:not([tabindex="-1"])')]
+      .filter((el) => !el.disabled && el.getClientRects().length > 0);
+    if (f.length === 0) return;
+    const first = f[0], last = f[f.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  });
+  wireSwitch('swNewTab', 'openInNewTab');
+  wireSwitch('swWhy', 'autoExpandWhy');
+  wireSwitch('swSuggest', 'suggestions');
+  wireSwitch('swHistory', 'saveHistory');
+  $('sheetClearHistory').addEventListener('click', async () => {
+    await fetch('/v1/history', { method: 'DELETE' }).catch(() => {});
+    if (els.main.className === 'home-mode') refreshHistory();
+  });
+  $('sheetReplay').addEventListener('click', () => { closeSheet(); storyOpen(); });
+
   els.brand.addEventListener('click', () => {
     const tab = activeTab();
     tab.q = '';
@@ -1113,7 +1594,9 @@
   els.replayStory.addEventListener('click', storyOpen);
   els.storySkip.addEventListener('click', storyClose);
   document.addEventListener('keydown', (e) => {
-    if (story.open && e.key === 'Escape') storyClose();
+    if (e.key !== 'Escape') return;
+    if (sheetOpen) closeSheet();
+    else if (story.open) storyClose();
   });
 
   // Keep Tab cycling inside the dialog while the story is open.
@@ -1129,6 +1612,8 @@
   });
 
   // ════ Boot ═══════════════════════════════════════════════════
+  loadSettingsLocal();
+  applySettingsEffects();
   loadState();
   for (const tab of state.tabs) if (tab.data) tab.fromCache = true;
   render();
