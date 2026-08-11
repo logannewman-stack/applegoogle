@@ -8,8 +8,9 @@
 //   test/ranker.test.js pins this: injecting sponsorship-style fields onto
 //   documents must not move a single score.
 //
-// The full signal list is public API (GET /v1/ranking) so users can audit
-// exactly what decides their results.
+// And because trust needs receipts, every result carries a `why` object:
+// a plain-language explanation of exactly which signals put it on the page.
+// The full signal list is public API (GET /v1/ranking).
 
 import { tokenize, contentTerms } from './tokenizer.js';
 
@@ -60,20 +61,25 @@ function idf(totalDocs, df) {
   return Math.log(1 + (totalDocs - df + 0.5) / (df + 0.5));
 }
 
-// Fraction of adjacent query-term pairs that appear adjacent in the document.
-function phraseScore(queryTokens, postingsByTerm, docId) {
-  if (queryTokens.length < 2) return 0;
+// Which adjacent query-term pairs appear adjacent in the document?
+// Returns { score: fractionMatched, firstPair: indexOfFirstMatchedPair|null }.
+function phraseAnalysis(queryTokens, postingsByTerm, docId) {
+  if (queryTokens.length < 2) return { score: 0, firstPair: null };
   let pairs = 0;
   let hits = 0;
+  let firstPair = null;
   for (let i = 0; i < queryTokens.length - 1; i++) {
     const a = postingsByTerm.get(queryTokens[i])?.docs[docId];
     const b = postingsByTerm.get(queryTokens[i + 1])?.docs[docId];
     pairs++;
     if (!a || !b) continue;
     const set = new Set(b.pos);
-    if (a.pos.some((p) => set.has(p + 1))) hits++;
+    if (a.pos.some((p) => set.has(p + 1))) {
+      hits++;
+      if (firstPair === null) firstPair = i;
+    }
   }
-  return pairs > 0 ? hits / pairs : 0;
+  return { score: pairs > 0 ? hits / pairs : 0, firstPair };
 }
 
 function freshnessFactor(fetchedAt, now) {
@@ -82,21 +88,27 @@ function freshnessFactor(fetchedAt, now) {
   return 1 + WEIGHTS.freshness * Math.exp(-ageDays / 365);
 }
 
-// Core scoring: returns [{id, score, matched}] sorted best-first.
+// Core scoring: returns { queryTokens, scored, details } where scored is
+// [{id, score, matched}] best-first and details holds per-doc signal data
+// used to build explanations.
 export function scoreDocuments(index, query, { now = Date.now() } = {}) {
   const data = index.data;
   const queryTokens = tokenize(query);
-  if (queryTokens.length === 0) return { queryTokens, scored: [] };
+  if (queryTokens.length === 0) return { queryTokens, scored: [], details: new Map() };
 
   const uniqueTerms = [...new Set(queryTokens)];
   const required = contentTerms(uniqueTerms);
   const totalDocs = index.docCount;
   const avgLen = index.avgDocLength();
 
+  // Document frequency and IDF once per term — not once per candidate.
   const postingsByTerm = new Map();
+  const idfByTerm = new Map();
   for (const term of uniqueTerms) {
     const posting = data.postings[term];
-    if (posting) postingsByTerm.set(term, posting);
+    if (!posting) continue;
+    postingsByTerm.set(term, posting);
+    idfByTerm.set(term, idf(totalDocs, index.documentFrequency(term)));
   }
 
   // Gather candidates with per-doc matched term sets.
@@ -126,25 +138,117 @@ export function scoreDocuments(index, query, { now = Date.now() } = {}) {
   if (pool.length < 5) pool = [...candidates];
 
   const scored = [];
+  const details = new Map();
   for (const [docId, matchedTerms] of pool) {
     const doc = data.docs[docId];
     let bm25 = 0;
+    const fieldHits = { title: new Set(), description: new Set() };
     for (const term of matchedTerms) {
       const entry = postingsByTerm.get(term).docs[docId];
-      const df = index.documentFrequency(term);
       const norm = entry.w / (entry.w + BM25_K1 * (1 - BM25_B + (BM25_B * doc.len) / avgLen));
-      bm25 += idf(totalDocs, df) * norm;
+      bm25 += idfByTerm.get(term) * norm;
+      if (entry.f?.[0] > 0) fieldHits.title.add(term);
+      if (entry.f?.[1] > 0) fieldHits.description.add(term);
     }
 
+    const phrase = phraseAnalysis(queryTokens, postingsByTerm, docId);
     const authorityFactor = 1 + WEIGHTS.authority * (doc.authority || 0);
-    const proximityFactor = 1 + WEIGHTS.phrase * phraseScore(queryTokens, postingsByTerm, docId);
-    const score = bm25 * authorityFactor * proximityFactor * freshnessFactor(doc.fetchedAt, now);
+    const proximityFactor = 1 + WEIGHTS.phrase * phrase.score;
+    const freshFactor = freshnessFactor(doc.fetchedAt, now);
+    const score = bm25 * authorityFactor * proximityFactor * freshFactor;
 
     scored.push({ id: docId, score, matched: [...matchedTerms] });
+    details.set(docId, {
+      bm25,
+      authorityFactor,
+      proximityFactor,
+      freshFactor,
+      firstPair: phrase.firstPair,
+      fieldHits,
+      requiredMatched: [...matchedTerms].filter((t) => requiredSet.has(t)),
+    });
   }
 
   scored.sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));
-  return { queryTokens, scored };
+  return { queryTokens, scored, details, required };
+}
+
+const listJoin = (items) =>
+  items.length <= 1 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
+
+function ageWords(fetchedAt, now) {
+  if (!fetchedAt) return null;
+  const days = (now - new Date(fetchedAt).getTime()) / 86400000;
+  if (days < 1) return 'crawled today';
+  if (days < 2) return 'crawled yesterday';
+  if (days < 60) return `crawled ${Math.round(days)} days ago`;
+  return `crawled ${Math.round(days / 30)} months ago`;
+}
+
+// The receipt: a plain-language account of why this result is on the page.
+function buildWhy(doc, detail, queryInfo, now) {
+  const { surfaceByStem, orderedSurfaces, required } = queryInfo;
+  const quote = (stem) => `“${surfaceByStem.get(stem) || stem}”`;
+
+  const matchedRequired = [...new Set(detail.requiredMatched)];
+  const missing = required.filter((t) => !matchedRequired.includes(t));
+  const parts = [];
+
+  if (missing.length === 0) {
+    parts.push(
+      required.length === 1
+        ? `matches your search term ${quote(required[0])}`
+        : `matches all ${required.length} of your search terms`,
+    );
+  } else {
+    parts.push(
+      `matches ${matchedRequired.length} of your ${required.length} search terms (no match for ${listJoin(missing.map(quote))})`,
+    );
+  }
+
+  const inTitle = [...detail.fieldHits.title].filter((t) => matchedRequired.includes(t));
+  const inDescription = [...detail.fieldHits.description].filter(
+    (t) => matchedRequired.includes(t) && !inTitle.includes(t),
+  );
+  if (inTitle.length > 0) {
+    parts.push(`${listJoin(inTitle.slice(0, 3).map(quote))} appear${inTitle.length === 1 ? 's' : ''} in the title`);
+  } else if (inDescription.length > 0) {
+    parts.push(`${listJoin(inDescription.slice(0, 3).map(quote))} appear${inDescription.length === 1 ? 's' : ''} in the description`);
+  }
+
+  let phraseText = null;
+  if (detail.firstPair !== null) {
+    phraseText = `${orderedSurfaces[detail.firstPair]} ${orderedSurfaces[detail.firstPair + 1]}`;
+    parts.push(`contains the exact phrase “${phraseText}”`);
+  }
+
+  const inlinks = doc.inlinks || 0;
+  if (inlinks > 0) {
+    parts.push(`${inlinks} other indexed page${inlinks === 1 ? ' links' : 's link'} here`);
+  }
+
+  const age = ageWords(doc.fetchedAt, now);
+  if (age) parts.push(age);
+
+  const summary = parts.join('; ') + '.';
+  return {
+    summary: summary.charAt(0).toUpperCase() + summary.slice(1),
+    matched: {
+      terms: matchedRequired.map((t) => surfaceByStem.get(t) || t),
+      of: required.length,
+      missing: missing.map((t) => surfaceByStem.get(t) || t),
+      inTitle: inTitle.map((t) => surfaceByStem.get(t) || t),
+      inDescription: inDescription.map((t) => surfaceByStem.get(t) || t),
+    },
+    exactPhrase: phraseText,
+    inboundLinks: inlinks,
+    factors: {
+      textRelevance: Number(detail.bm25.toFixed(3)),
+      linkAuthority: Number(detail.authorityFactor.toFixed(3)),
+      phraseProximity: Number(detail.proximityFactor.toFixed(3)),
+      freshness: Number(detail.freshFactor.toFixed(3)),
+    },
+  };
 }
 
 // Build a text snippet centered on the densest cluster of query matches.
@@ -187,10 +291,18 @@ export function makeSnippet(text, queryTokens, maxLen = 220) {
   return `${start > 0 ? '…' : ''}${clean.slice(start, end).trimEnd()}${end < clean.length ? '…' : ''}`;
 }
 
-// Full search pipeline: score, diversify, paginate, snippet.
+// Full search pipeline: score, diversify, paginate, snippet, explain.
 export function search(index, query, { page = 1, perPage = 10, now = Date.now() } = {}) {
   const started = performance.now();
-  const { queryTokens, scored } = scoreDocuments(index, query, { now });
+  const { queryTokens, scored, details, required = [] } = scoreDocuments(index, query, { now });
+
+  // Query surfaces for human-readable explanations.
+  const pairs = tokenize(query, { surfaces: true });
+  const surfaceByStem = new Map();
+  for (const { token, surface } of pairs) {
+    if (!surfaceByStem.has(token)) surfaceByStem.set(token, surface);
+  }
+  const queryInfo = { surfaceByStem, orderedSurfaces: pairs.map((p) => p.surface), required };
 
   // Domain diversity: one site should not own a whole results page.
   const perDomain = new Map();
@@ -223,6 +335,7 @@ export function search(index, query, { page = 1, perPage = 10, now = Date.now() 
         : makeSnippet(doc.text || doc.description, queryTokens),
       score: Number(hit.score.toFixed(4)),
       matchedTerms: hit.matched,
+      why: buildWhy(doc, details.get(hit.id), queryInfo, now),
     };
   });
 

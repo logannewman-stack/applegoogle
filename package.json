@@ -1,7 +1,7 @@
 {
-  "name": "applegoogle",
-  "version": "0.1.0",
-  "description": "A minimal, ad-free search engine. Organic ranking only — no sponsored results, ever. Subscription-funded.",
+  "name": "northstar",
+  "version": "0.2.0",
+  "description": "Northstar — a minimal, ad-free search engine that explains every result. Organic ranking only, subscription-funded.",
   "type": "module",
   "private": true,
   "engines": {

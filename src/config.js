@@ -23,7 +23,7 @@ export function makeConfig(overrides = {}) {
     trustProxy: env.TRUST_PROXY === '1',
 
     // Crawler politeness
-    crawlUserAgent: env.CRAWL_USER_AGENT || 'applegoogle-crawler/0.1 (respectful; obeys robots.txt)',
+    crawlUserAgent: env.CRAWL_USER_AGENT || 'northstar-crawler/0.2 (respectful; obeys robots.txt)',
     crawlDelayMs: num(env.CRAWL_DELAY_MS, 1000),
     crawlTimeoutMs: num(env.CRAWL_TIMEOUT_MS, 10000),
     crawlMaxBytes: num(env.CRAWL_MAX_BYTES, 2 * 1024 * 1024),

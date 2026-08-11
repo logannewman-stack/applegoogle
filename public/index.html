@@ -3,17 +3,18 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<!-- Placeholder wordmark below (.wordmark) — swap in the real name and logo when ready. -->
-<title>applegoogle</title>
+<title>Northstar</title>
+<link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="black" d="M12 1l2.4 8.6L23 12l-8.6 2.4L12 23l-2.4-8.6L1 12l8.6-2.4z"/></svg>'>
 <style>
   :root {
     --ink: #111111;
     --paper: #ffffff;
     --faint: #757575;
     --line: #e2e2e2;
+    --wash: #f6f6f6;
   }
   @media (prefers-color-scheme: dark) {
-    :root { --ink: #f2f2f2; --paper: #0d0d0d; --faint: #9a9a9a; --line: #262626; }
+    :root { --ink: #f2f2f2; --paper: #0d0d0d; --faint: #9a9a9a; --line: #262626; --wash: #171717; }
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { height: 100%; }
@@ -26,99 +27,313 @@
     flex-direction: column;
     align-items: center;
   }
-  main {
-    width: min(640px, 92vw);
-    display: flex;
-    flex-direction: column;
-    flex: 1;
-  }
-  .home { justify-content: center; }
-  .home .results-meta, .home #results { display: none; }
-  .wordmark {
-    font-weight: 600;
-    letter-spacing: 0.02em;
-    text-align: center;
-    font-size: 2rem;
-    margin-bottom: 2.2rem;
-    user-select: none;
-  }
-  .searched .wordmark {
-    font-size: 1.05rem;
-    text-align: left;
-    margin: 2.2rem 0 1.4rem;
-  }
-  form { width: 100%; }
-  .box {
+
+  /* ── Tab bar ─────────────────────────────────────────────── */
+  .tabbar {
+    width: 100%;
+    flex: none;
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: 0.3rem;
+    padding: 0.55rem 0.8rem 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .tabrule { flex: none; }
+  .tabbar::-webkit-scrollbar { display: none; }
+  .tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    max-width: 13rem;
+    padding: 0.38rem 0.7rem 0.38rem 0.9rem;
     border: 1px solid var(--line);
-    border-radius: 999px;
-    padding: 0.85rem 1.4rem;
-    transition: border-color 0.15s ease;
+    border-radius: 8px 8px 0 0;
+    border-bottom: none;
+    background: var(--wash);
+    color: var(--faint);
+    font-size: 0.78rem;
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+    flex: none;
+  }
+  .tab.active { background: var(--paper); color: var(--ink); border-color: var(--ink); }
+  .tab .label { overflow: hidden; text-overflow: ellipsis; max-width: 9.5rem; }
+  .tab .close {
+    border: none; background: none; color: inherit; cursor: pointer;
+    font-size: 0.85rem; line-height: 1; padding: 0.1rem 0.15rem; border-radius: 4px;
+  }
+  .tab .close:hover { background: var(--line); }
+  .newtab {
+    border: 1px solid var(--line); background: none; color: var(--faint);
+    border-radius: 8px; width: 1.7rem; height: 1.7rem; cursor: pointer;
+    font-size: 1rem; line-height: 1; flex: none;
+  }
+  .newtab:hover { color: var(--ink); border-color: var(--ink); }
+  .tabrule { width: 100%; border-bottom: 1px solid var(--line); }
+
+  /* ── Layout ──────────────────────────────────────────────── */
+  main { width: min(660px, 92vw); display: flex; flex-direction: column; flex: 1; }
+  .home-mode { justify-content: center; }
+
+  .brand {
+    display: flex; align-items: center; justify-content: center; gap: 0.55rem;
+    margin-bottom: 2.1rem; user-select: none; cursor: pointer;
+  }
+  .brand svg { width: 1.6rem; height: 1.6rem; }
+  .brand .name { font-weight: 600; letter-spacing: 0.01em; font-size: 2rem; }
+  .results-mode .brand { justify-content: flex-start; margin: 1.6rem 0 1.2rem; }
+  .results-mode .brand svg { width: 1.05rem; height: 1.05rem; }
+  .results-mode .brand .name { font-size: 1.05rem; }
+
+  form { width: 100%; }
+  .box {
+    display: flex; align-items: center; gap: 0.75rem;
+    border: 1px solid var(--line); border-radius: 999px;
+    padding: 0.85rem 1.4rem; transition: border-color 0.15s ease;
+    background: var(--paper);
   }
   .box:focus-within { border-color: var(--ink); }
   .box svg { flex: none; opacity: 0.45; }
-  input {
-    flex: 1;
-    border: none;
-    outline: none;
-    background: transparent;
-    color: var(--ink);
-    font: inherit;
-    font-size: 1.05rem;
+  input[type="text"] {
+    flex: 1; border: none; outline: none; background: transparent;
+    color: var(--ink); font: inherit; font-size: 1.05rem; min-width: 0;
   }
   input::placeholder { color: var(--faint); }
-  .results-meta {
-    color: var(--faint);
-    font-size: 0.8rem;
-    margin: 1.6rem 0 0.4rem;
+
+  /* ── History (home) ──────────────────────────────────────── */
+  .history { margin-top: 2rem; }
+  .history .head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-size: 0.78rem; color: var(--faint);
+    text-transform: uppercase; letter-spacing: 0.08em;
+    margin-bottom: 0.4rem;
   }
-  .result { padding: 1.1rem 0; border-bottom: 1px solid var(--line); }
+  .linklike {
+    border: none; background: none; color: var(--faint); cursor: pointer;
+    font: inherit; font-size: 0.78rem; text-decoration: underline; text-underline-offset: 2px;
+  }
+  .linklike:hover { color: var(--ink); }
+  .history ul { list-style: none; }
+  .history li {
+    display: flex; justify-content: space-between; align-items: center; gap: 1rem;
+    padding: 0.5rem 0.2rem; border-bottom: 1px solid var(--line);
+    font-size: 0.95rem; cursor: pointer;
+  }
+  .history li:hover .q { text-decoration: underline; text-underline-offset: 2px; }
+  .history li .when { color: var(--faint); font-size: 0.75rem; flex: none; }
+  .history li .rm {
+    border: none; background: none; color: var(--faint); cursor: pointer;
+    font-size: 0.85rem; padding: 0 0.2rem; visibility: hidden;
+  }
+  .history li:hover .rm { visibility: visible; }
+
+  /* ── Results ─────────────────────────────────────────────── */
+  .results-meta { color: var(--faint); font-size: 0.8rem; margin: 1.5rem 0 0.3rem; }
+  .result { padding: 1.05rem 0; border-bottom: 1px solid var(--line); }
   .result:last-child { border-bottom: none; }
   .result .site { font-size: 0.78rem; color: var(--faint); margin-bottom: 0.15rem; overflow-wrap: anywhere; }
-  .result a.title {
-    color: var(--ink);
-    font-size: 1.08rem;
-    font-weight: 600;
-    text-decoration: none;
-  }
+  .result a.title { color: var(--ink); font-size: 1.08rem; font-weight: 600; text-decoration: none; }
   .result a.title:hover { text-decoration: underline; }
-  .result .snippet { margin-top: 0.3rem; font-size: 0.92rem; line-height: 1.5; color: var(--ink); opacity: 0.82; }
+  .result .snippet { margin-top: 0.3rem; font-size: 0.92rem; line-height: 1.5; opacity: 0.82; }
   .result .snippet b { font-weight: 600; }
+  .whybtn {
+    margin-top: 0.45rem; border: none; background: none; color: var(--faint);
+    font-size: 0.78rem; cursor: pointer; padding: 0;
+  }
+  .whybtn:hover { color: var(--ink); }
+  .why {
+    display: none; margin-top: 0.5rem; padding: 0.7rem 0.9rem;
+    border-left: 2px solid var(--ink); background: var(--wash);
+    font-size: 0.85rem; line-height: 1.55; border-radius: 0 6px 6px 0;
+  }
+  .why.open { display: block; }
+  .why .factors { margin-top: 0.4rem; color: var(--faint); font-size: 0.76rem; }
   .empty { color: var(--faint); padding: 2rem 0; text-align: center; font-size: 0.95rem; }
+
   footer {
-    width: min(640px, 92vw);
-    padding: 1.4rem 0 1.8rem;
-    color: var(--faint);
-    font-size: 0.75rem;
-    text-align: center;
-    letter-spacing: 0.01em;
+    width: min(660px, 92vw); padding: 1.3rem 0 1.6rem;
+    display: flex; flex-direction: column; gap: 0.35rem; align-items: center;
+    color: var(--faint); font-size: 0.75rem; text-align: center; letter-spacing: 0.01em;
   }
 </style>
 </head>
 <body>
-  <main id="main" class="home">
-    <h1 class="wordmark">applegoogle</h1>
+  <nav class="tabbar" id="tabbar" role="tablist" aria-label="Search tabs"></nav>
+  <div class="tabrule"></div>
+
+  <main id="main" class="home-mode">
+    <div class="brand" id="brand" title="Home">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 1l2.4 8.6L23 12l-8.6 2.4L12 23l-2.4-8.6L1 12l8.6-2.4z"/></svg>
+      <span class="name">Northstar</span>
+    </div>
+
     <form id="form" autocomplete="off">
       <div class="box">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
         <input id="q" type="text" placeholder="Search" autofocus>
       </div>
     </form>
-    <div class="results-meta" id="meta"></div>
+
+    <section class="history" id="historyBlock" hidden>
+      <div class="head"><span>Recent</span><button class="linklike" id="clearHistory">Clear all</button></div>
+      <ul id="historyList"></ul>
+    </section>
+
+    <div class="results-meta" id="meta" hidden></div>
     <div id="results"></div>
   </main>
-  <footer>No ads. No sponsored results. Nothing is for sale on this page — results are ranked by relevance alone.</footer>
+
+  <footer>
+    <div>No ads. No sponsored results. Nothing is for sale on this page — results are ranked by relevance alone, and every result explains why it's here.</div>
+    <button class="linklike" id="privateToggle">Private mode: off</button>
+  </footer>
 
 <script>
-  const form = document.getElementById('form');
-  const input = document.getElementById('q');
-  const main = document.getElementById('main');
-  const meta = document.getElementById('meta');
-  const resultsEl = document.getElementById('results');
+(() => {
+  'use strict';
 
-  const escapeHtml = (s) => s.replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  // ── State: tabs are cached in localStorage, history lives server-side ──
+  const STORE_KEY = 'northstar.tabs.v1';
+  let state = { tabs: [], active: null };
+  let privateMode = false;
+
+  const $ = (id) => document.getElementById(id);
+  const els = {
+    tabbar: $('tabbar'), main: $('main'), brand: $('brand'), form: $('form'), q: $('q'),
+    historyBlock: $('historyBlock'), historyList: $('historyList'), clearHistory: $('clearHistory'),
+    meta: $('meta'), results: $('results'), privateToggle: $('privateToggle'),
+  };
+
+  const uid = () => Math.random().toString(36).slice(2, 10);
+  const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+  function loadState() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(STORE_KEY));
+      if (raw && Array.isArray(raw.tabs) && raw.tabs.length > 0) {
+        state = raw;
+        if (!state.tabs.some((t) => t.id === state.active)) state.active = state.tabs[0].id;
+        return;
+      }
+    } catch {}
+    state = { tabs: [{ id: uid(), q: '', data: null }], active: null };
+    state.active = state.tabs[0].id;
+  }
+
+  function saveState() {
+    // The per-tab result cache: keep payloads only for the 8 most recent tabs.
+    const slim = {
+      active: state.active,
+      tabs: state.tabs.map((t, i) => ({
+        id: t.id, q: t.q,
+        data: (privateMode || state.tabs.length - i > 8) ? null : t.data,
+      })),
+    };
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(slim)); } catch {}
+  }
+
+  const activeTab = () => state.tabs.find((t) => t.id === state.active);
+
+  // ── Tabs ──────────────────────────────────────────────────────────────
+  function renderTabs() {
+    els.tabbar.innerHTML = '';
+    for (const tab of state.tabs) {
+      const el = document.createElement('div');
+      el.className = 'tab' + (tab.id === state.active ? ' active' : '');
+      el.setAttribute('role', 'tab');
+      el.setAttribute('aria-selected', tab.id === state.active);
+      el.innerHTML = `<span class="label">${escapeHtml(tab.q || 'New tab')}</span>` +
+        (state.tabs.length > 1 ? '<button class="close" aria-label="Close tab">×</button>' : '');
+      el.addEventListener('click', (e) => {
+        if (e.target.classList.contains('close')) { closeTab(tab.id); return; }
+        if (tab.id !== state.active) { state.active = tab.id; saveState(); render(); }
+      });
+      els.tabbar.appendChild(el);
+    }
+    const plus = document.createElement('button');
+    plus.className = 'newtab';
+    plus.textContent = '+';
+    plus.setAttribute('aria-label', 'New tab');
+    plus.addEventListener('click', newTab);
+    els.tabbar.appendChild(plus);
+  }
+
+  function newTab() {
+    const tab = { id: uid(), q: '', data: null };
+    state.tabs.push(tab);
+    state.active = tab.id;
+    saveState();
+    render();
+    els.q.focus();
+  }
+
+  function closeTab(id) {
+    const idx = state.tabs.findIndex((t) => t.id === id);
+    state.tabs.splice(idx, 1);
+    if (state.active === id) state.active = (state.tabs[idx] || state.tabs[idx - 1]).id;
+    saveState();
+    render();
+  }
+
+  // ── Views ─────────────────────────────────────────────────────────────
+  function render() {
+    renderTabs();
+    const tab = activeTab();
+    els.q.value = tab.q || '';
+    if (tab.q && tab.data) {
+      els.main.className = 'results-mode';
+      els.historyBlock.hidden = true;
+      renderResults(tab.data, { fromCache: !!tab.fromCache });
+    } else {
+      els.main.className = 'home-mode';
+      els.meta.hidden = true;
+      els.results.innerHTML = '';
+      refreshHistory();
+    }
+  }
+
+  function renderResults(data, { fromCache = false } = {}) {
+    els.meta.hidden = false;
+    const bits = [];
+    if (data.total !== undefined) bits.push(`${data.total} ${data.total === 1 ? 'result' : 'results'}`);
+    if (data.tookMs !== undefined) bits.push(`${data.tookMs} ms`);
+    if (data.cached) bits.push('server cache');
+    if (fromCache) bits.push('restored from this tab’s cache — search again to refresh');
+    if (data.private) bits.push('private — not saved to history');
+    els.meta.textContent = bits.join(' · ');
+
+    if (!data.results || data.results.length === 0) {
+      els.results.innerHTML = '<div class="empty">Nothing matched. The index may still be small — crawl more of the web.</div>';
+      return;
+    }
+
+    els.results.innerHTML = data.results.map((r, i) => `
+      <div class="result">
+        <div class="site">${escapeHtml(r.domain)}</div>
+        <a class="title" href="${escapeHtml(r.url)}" rel="noopener">${escapeHtml(r.title)}</a>
+        <div class="snippet">${highlight(r.snippet, data.normalizedTerms || [])}</div>
+        ${r.why ? `
+          <button class="whybtn" data-why="${i}" aria-expanded="false">Why this result ▸</button>
+          <div class="why" id="why-${i}">
+            ${escapeHtml(r.why.summary)}
+            <div class="factors">Text relevance ${r.why.factors.textRelevance}
+              · link authority ×${r.why.factors.linkAuthority}
+              · phrase ×${r.why.factors.phraseProximity}
+              · freshness ×${r.why.factors.freshness}</div>
+          </div>` : ''}
+      </div>`).join('');
+
+    for (const btn of els.results.querySelectorAll('.whybtn')) {
+      btn.addEventListener('click', () => {
+        const panel = $(`why-${btn.dataset.why}`);
+        const open = panel.classList.toggle('open');
+        btn.setAttribute('aria-expanded', open);
+        btn.textContent = open ? 'Why this result ▾' : 'Why this result ▸';
+      });
+    }
+  }
 
   function highlight(text, terms) {
     let out = escapeHtml(text);
@@ -129,41 +344,103 @@
     return out;
   }
 
+  // ── Search ────────────────────────────────────────────────────────────
   async function runSearch(q) {
-    const res = await fetch('/v1/search?q=' + encodeURIComponent(q));
-    const data = await res.json();
-    main.classList.remove('home');
-    main.classList.add('searched');
-
-    if (!res.ok) {
-      meta.textContent = '';
-      resultsEl.innerHTML = '<div class="empty">' + escapeHtml(data.error?.message || 'Something went wrong.') + '</div>';
+    const tab = activeTab();
+    tab.q = q;
+    tab.fromCache = false;
+    let data;
+    try {
+      const res = await fetch(`/v1/search?q=${encodeURIComponent(q)}${privateMode ? '&private=1' : ''}`);
+      data = await res.json();
+      if (!res.ok) {
+        tab.data = null;
+        els.main.className = 'results-mode';
+        els.historyBlock.hidden = true;
+        els.meta.hidden = true;
+        els.results.innerHTML = `<div class="empty">${escapeHtml(data.error?.message || 'Something went wrong.')}</div>`;
+        renderTabs();
+        saveState();
+        return;
+      }
+    } catch {
+      els.results.innerHTML = '<div class="empty">Could not reach the server.</div>';
       return;
     }
-    meta.textContent = data.total + (data.total === 1 ? ' result' : ' results') + ' · ' + data.tookMs + ' ms';
-    if (data.results.length === 0) {
-      resultsEl.innerHTML = '<div class="empty">Nothing matched. The index may still be small — crawl more of the web.</div>';
-      return;
-    }
-    resultsEl.innerHTML = data.results.map((r) => (
-      '<div class="result">' +
-        '<div class="site">' + escapeHtml(r.domain) + '</div>' +
-        '<a class="title" href="' + escapeHtml(r.url) + '" rel="noopener">' + escapeHtml(r.title) + '</a>' +
-        '<div class="snippet">' + highlight(r.snippet, data.normalizedTerms) + '</div>' +
-      '</div>'
-    )).join('');
+    tab.data = data;
+    saveState();
+    render();
   }
 
-  form.addEventListener('submit', (e) => {
+  // ── History (server-side, session cookie) ─────────────────────────────
+  async function refreshHistory() {
+    if (privateMode) { els.historyBlock.hidden = true; return; }
+    try {
+      const res = await fetch('/v1/history?limit=8');
+      const { history } = await res.json();
+      if (!history || history.length === 0) { els.historyBlock.hidden = true; return; }
+      els.historyBlock.hidden = false;
+      els.historyList.innerHTML = history.map((h) => `
+        <li data-q="${escapeHtml(h.query)}">
+          <span class="q">${escapeHtml(h.query)}</span>
+          <span class="when">${timeAgo(h.lastSearchedAt)}</span>
+          <button class="rm" aria-label="Remove from history">×</button>
+        </li>`).join('');
+      for (const li of els.historyList.querySelectorAll('li')) {
+        li.addEventListener('click', async (e) => {
+          const q = li.dataset.q;
+          if (e.target.classList.contains('rm')) {
+            await fetch(`/v1/history?query=${encodeURIComponent(q)}`, { method: 'DELETE' });
+            refreshHistory();
+            return;
+          }
+          els.q.value = q;
+          runSearch(q);
+        });
+      }
+    } catch { els.historyBlock.hidden = true; }
+  }
+
+  function timeAgo(iso) {
+    const s = (Date.now() - new Date(iso).getTime()) / 1000;
+    if (s < 60) return 'just now';
+    if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+    if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+    return `${Math.floor(s / 86400)}d ago`;
+  }
+
+  // ── Wiring ────────────────────────────────────────────────────────────
+  els.form.addEventListener('submit', (e) => {
     e.preventDefault();
-    const q = input.value.trim();
-    if (!q) return;
-    history.replaceState(null, '', '?q=' + encodeURIComponent(q));
-    runSearch(q);
+    const q = els.q.value.trim();
+    if (q) runSearch(q);
   });
 
-  const initial = new URLSearchParams(location.search).get('q');
-  if (initial) { input.value = initial; runSearch(initial); }
+  els.brand.addEventListener('click', () => {
+    const tab = activeTab();
+    tab.q = '';
+    tab.data = null;
+    saveState();
+    render();
+    els.q.focus();
+  });
+
+  els.clearHistory.addEventListener('click', async () => {
+    await fetch('/v1/history', { method: 'DELETE' });
+    refreshHistory();
+  });
+
+  els.privateToggle.addEventListener('click', () => {
+    privateMode = !privateMode;
+    els.privateToggle.textContent = `Private mode: ${privateMode ? 'on' : 'off'}`;
+    if (els.main.className === 'home-mode') refreshHistory();
+  });
+
+  // Restore tabs (and their cached results) from the last visit.
+  loadState();
+  for (const tab of state.tabs) if (tab.data) tab.fromCache = true;
+  render();
+})();
 </script>
 </body>
 </html>

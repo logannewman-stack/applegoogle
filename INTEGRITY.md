@@ -1,6 +1,6 @@
 # The Ranking Covenant
 
-This search engine exists on one promise: **results cannot be bought.**
+Northstar exists on one promise: **results cannot be bought.**
 
 ## What ranks a page
 
@@ -35,6 +35,9 @@ Every signal is earned relevance. The complete list is public at `GET /v1/rankin
   money into ranking, CI goes red.
 - **The formula is public API.** `GET /v1/ranking` publishes the signals and
   this exclusion list, so users can audit the promise at any time.
+- **Every result shows its receipt.** Each search hit carries a `why` object
+  explaining, in plain language and in numbers, exactly which signals put it
+  on the page — so the promise is verifiable one result at a time.
 
 ## Why the business model makes this possible
 

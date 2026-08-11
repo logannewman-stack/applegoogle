@@ -3,10 +3,12 @@
 // Layout (all plain JSON so it can persist through JsonStore):
 //   docs:      docId -> { url, domain, title, description, text, len, fetchedAt,
 //                         links, authority, removed }
-//   postings:  term  -> { display, docs: { docId: { w, pos } } }
+//   postings:  term  -> { display, docs: { docId: { w, pos, f } } }
 //     w   = field-weighted term frequency (title counts 3x, description 1.5x, body 1x)
 //     pos = token positions in the combined title+description+body stream,
 //           capped, used for phrase proximity scoring
+//     f   = [titleTf, descriptionTf, bodyTf] — kept so results can *explain*
+//           where each query term matched
 //
 // Re-adding a URL tombstones the old document (postings entries for removed
 // docs are skipped at search time and dropped on the next full save/compact).
@@ -19,8 +21,10 @@ const MAX_LINKS_PER_DOC = 200;
 const MAX_STORED_TEXT = 6000;
 
 export function emptyIndexData() {
-  return { version: 1, docs: {}, postings: {}, urlToDoc: {}, nextId: 1, updatedAt: null };
+  return { version: 2, docs: {}, postings: {}, urlToDoc: {}, nextId: 1, updatedAt: null };
 }
+
+const FIELD_SLOT = { title: 0, description: 1, body: 2 };
 
 export function normalizeUrl(raw, base) {
   let u;
@@ -45,16 +49,31 @@ export function normalizeUrl(raw, base) {
 export class SearchIndex {
   constructor(store) {
     this.store = store; // JsonStore whose .data matches emptyIndexData()
+    this._stats = null; // cached {docs, totalLen}; recomputed after mutations
   }
 
   get data() {
     return this.store.data;
   }
 
+  _computeStats() {
+    if (!this._stats) {
+      let docs = 0;
+      let totalLen = 0;
+      for (const id in this.data.docs) {
+        const d = this.data.docs[id];
+        if (!d.removed) {
+          docs++;
+          totalLen += d.len;
+        }
+      }
+      this._stats = { docs, totalLen };
+    }
+    return this._stats;
+  }
+
   get docCount() {
-    let n = 0;
-    for (const id in this.data.docs) if (!this.data.docs[id].removed) n++;
-    return n;
+    return this._computeStats().docs;
   }
 
   get termCount() {
@@ -62,16 +81,8 @@ export class SearchIndex {
   }
 
   avgDocLength() {
-    let total = 0;
-    let n = 0;
-    for (const id in this.data.docs) {
-      const d = this.data.docs[id];
-      if (!d.removed) {
-        total += d.len;
-        n++;
-      }
-    }
-    return n > 0 ? total / n : 1;
+    const { docs, totalLen } = this._computeStats();
+    return docs > 0 ? totalLen / docs : 1;
   }
 
   // doc: { url, title, description, text, links[], lang, fetchedAt }
@@ -92,16 +103,18 @@ export class SearchIndex {
     // One combined position stream: title, then description, then body.
     let pos = 0;
     let len = 0;
-    const perTerm = new Map(); // term -> { w, pos: [], display }
+    const perTerm = new Map(); // term -> { w, pos: [], f: [t,d,b], display }
     for (const [field, tokens] of Object.entries(fields)) {
       const weight = FIELD_WEIGHTS[field];
+      const slot = FIELD_SLOT[field];
       for (const { token, surface } of tokens) {
         let t = perTerm.get(token);
         if (!t) {
-          t = { w: 0, pos: [], display: surface };
+          t = { w: 0, pos: [], f: [0, 0, 0], display: surface };
           perTerm.set(token, t);
         }
         t.w += weight;
+        t.f[slot]++;
         if (t.pos.length < MAX_POSITIONS_PER_TERM) t.pos.push(pos);
         pos++;
         len++;
@@ -128,6 +141,7 @@ export class SearchIndex {
       fetchedAt: doc.fetchedAt || null,
       links,
       authority: 0,
+      inlinks: 0,
     };
     this.data.urlToDoc[url] = id;
 
@@ -137,10 +151,11 @@ export class SearchIndex {
         posting = { display: t.display, docs: {} };
         this.data.postings[term] = posting;
       }
-      posting.docs[id] = { w: t.w, pos: t.pos };
+      posting.docs[id] = { w: t.w, pos: t.pos, f: t.f };
     }
 
     this.data.updatedAt = new Date().toISOString();
+    this._stats = null;
     return id;
   }
 
@@ -149,6 +164,7 @@ export class SearchIndex {
     if (!doc || doc.removed) return;
     doc.removed = true;
     delete this.data.urlToDoc[doc.url];
+    this._stats = null;
   }
 
   // Drop tombstoned docs and their postings entries. Called before saves.
@@ -182,11 +198,15 @@ export class SearchIndex {
     if (n === 0) return;
 
     const outEdges = new Map();
+    const inlinkCounts = new Map();
     for (const id of ids) {
       const targets = [];
       for (const link of this.data.docs[id].links) {
         const target = this.data.urlToDoc[link];
-        if (target !== undefined && target !== id) targets.push(target);
+        if (target !== undefined && target !== id) {
+          targets.push(target);
+          inlinkCounts.set(target, (inlinkCounts.get(target) || 0) + 1);
+        }
       }
       outEdges.set(id, targets);
     }
@@ -213,6 +233,7 @@ export class SearchIndex {
     const max = Math.max(...rank.values());
     for (const id of ids) {
       this.data.docs[id].authority = max > 0 ? rank.get(id) / max : 0;
+      this.data.docs[id].inlinks = inlinkCounts.get(id) || 0;
     }
   }
 

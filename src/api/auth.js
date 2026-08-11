@@ -30,7 +30,7 @@ export function createAccount(usersData, email) {
     throw Object.assign(new Error('An account already exists for this email.'), { status: 409, code: 'account_exists' });
   }
 
-  const apiKey = `key_${randomBytes(24).toString('base64url')}`;
+  const apiKey = `ns_${randomBytes(24).toString('base64url')}`;
   const user = {
     id: randomUUID(),
     email: normEmail,

@@ -87,6 +87,29 @@ test('the published ranking manifest stays honest', () => {
   assert.ok(EXCLUDED_FOREVER.some((line) => /paid|sponsor|payment/i.test(line)));
 });
 
+test('every result explains itself in plain language', () => {
+  const index = buildIndex([
+    { url: 'https://x.example/hit', title: 'Sourdough starter guide', text: 'Feed the starter daily. Sourdough starter care is routine.' },
+    { url: 'https://x.example/partial', title: 'Bread notes', text: 'A weekly baking log with a sourdough loaf.' },
+    { url: 'https://x.example/fan', title: 'Reading list', text: 'Links I like.', links: ['https://x.example/hit'] },
+  ]);
+  index.computeAuthority();
+  const { results } = search(index, 'sourdough starter');
+
+  const top = results[0];
+  assert.equal(top.url, 'https://x.example/hit');
+  assert.match(top.why.summary, /matches all 2/i);
+  assert.match(top.why.summary, /title/i);
+  assert.equal(top.why.exactPhrase, 'sourdough starter');
+  assert.equal(top.why.inboundLinks, 1);
+  assert.ok(top.why.factors.phraseProximity > 1);
+  assert.ok(top.why.factors.linkAuthority > 1);
+
+  const partial = results.find((r) => r.url === 'https://x.example/partial');
+  assert.match(partial.why.summary, /matches 1 of your 2/i);
+  assert.deepEqual(partial.why.matched.missing, ['starter']);
+});
+
 test('snippets center on query matches', () => {
   const text = `${'Unrelated preamble sentence. '.repeat(30)}The sourdough starter doubles within six hours when healthy. ${'Trailing filler. '.repeat(30)}`;
   const snippet = makeSnippet(text, ['sourdough', 'starter']);
