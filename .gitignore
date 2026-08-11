@@ -1,0 +1,14 @@
+# Runtime data (index, accounts, usage) — never commit user data
+data/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Node
+node_modules/
+npm-debug.log*
+
+# OS noise
+.DS_Store

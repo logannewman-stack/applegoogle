@@ -1,0 +1,97 @@
+[
+  {
+    "url": "https://brew.example.org/guides/pour-over",
+    "title": "Pour-Over Coffee: A Complete Guide",
+    "description": "How to brew clean, bright pour-over coffee at home: grind size, water temperature, bloom, and pour technique.",
+    "text": "Pour-over coffee rewards patience. Start with fresh beans, ground medium-fine, about the texture of table salt. Heat water to 94°C. Rinse the paper filter to remove papery taste and warm the brewer. Add coffee, then pour twice its weight in water and wait thirty seconds for the bloom — trapped carbon dioxide escaping. Continue pouring in slow spirals, keeping the bed level. A total brew time of three minutes suits most light and medium roasts. If the cup tastes sour, grind finer or raise the temperature; if bitter, grind coarser. The ratio to remember is one gram of coffee to sixteen grams of water.",
+    "lang": "en",
+    "links": [
+      "https://brew.example.org/guides/espresso",
+      "https://brew.example.org/beans/light-roast"
+    ]
+  },
+  {
+    "url": "https://brew.example.org/guides/espresso",
+    "title": "Espresso at Home Without the Mystery",
+    "description": "Dial in home espresso: dose, yield, time, and taste — in that order.",
+    "text": "Espresso is just coffee brewed fast under pressure, and dialing it in is a loop: fix the dose, choose a yield, then adjust grind until the shot runs about twenty-eight seconds. Start with eighteen grams in and thirty-six grams out. Taste before you measure anything else — sour means the extraction is too fast, bitter means too slow. Fresh beans matter more than expensive machines. Once the basics are stable, experiment with temperature and pressure profiling. For brighter, cleaner cups on days without the machine, a pour-over is the gentler ritual.",
+    "lang": "en",
+    "links": [
+      "https://brew.example.org/guides/pour-over"
+    ]
+  },
+  {
+    "url": "https://brew.example.org/beans/light-roast",
+    "title": "Why Light Roast Coffee Tastes Different",
+    "description": "Light roasts keep the origin character of the bean: acidity, florals, and fruit.",
+    "text": "Roasting develops sweetness and body while burning away origin character. A light roast stops early, preserving the acids and aromatics that make an Ethiopian taste like jasmine and a Kenyan like blackcurrant. Light roasts are denser and less soluble, so they ask for hotter water and finer grinds. They shine in pour-over brewing, where clarity beats body. If your light roast tastes grassy or sour, it usually needs a finer grind, hotter water, or simply a week more rest after the roast date.",
+    "lang": "en",
+    "links": [
+      "https://brew.example.org/guides/pour-over"
+    ]
+  },
+  {
+    "url": "https://code.example.net/js/closures",
+    "title": "JavaScript Closures, Finally Explained",
+    "description": "A closure is a function that remembers the variables around it. Here is why that is useful.",
+    "text": "A closure is created every time a function is created. The function keeps a live reference to the variables in the scope where it was born — not a copy, a reference. That is why a counter function can keep incrementing a variable its parent returned long ago. Closures power callbacks, event handlers, module patterns, and memoization. The classic interview bug — every loop iteration logging the same number — happens because all the callbacks share one closed-over variable; declaring it with let gives each iteration its own. Understanding closures makes the event loop and asynchronous code far less mysterious.",
+    "lang": "en",
+    "links": [
+      "https://code.example.net/js/event-loop"
+    ]
+  },
+  {
+    "url": "https://code.example.net/js/event-loop",
+    "title": "The JavaScript Event Loop in Plain Words",
+    "description": "Call stack, task queue, microtasks: how JavaScript does many things with one thread.",
+    "text": "JavaScript runs on a single thread, and the event loop is how it fakes doing everything at once. Synchronous code runs on the call stack. When the stack empties, the loop pulls the next task from the queue — a click handler, a timer, a network response. Promises are microtasks and jump the line: all pending microtasks run before the next full task. This is why a promise callback runs before a setTimeout of zero. Blocking the stack blocks everything, which is why long computation belongs in a worker. Closures are what let all these queued callbacks remember the state they were created with.",
+    "lang": "en",
+    "links": [
+      "https://code.example.net/js/closures"
+    ]
+  },
+  {
+    "url": "https://trail.example.org/hikes/first-fourteener",
+    "title": "Your First Fourteener: How to Prepare",
+    "description": "Altitude, weather windows, and training for a first 14,000-foot summit hike.",
+    "text": "A fourteener is less about fitness than about respect for altitude and weather. Start hiking well before dawn so you are off the summit by noon, when storms build. Train with long hikes carrying the pack you will actually bring. Drink more water than feels necessary — altitude dehydrates quietly — and eat before you are hungry. Learn the signs of altitude sickness: headache, nausea, confusion; the only cure is going down. Check the forecast the night before and the morning of, and turn around without shame when clouds tower early. The mountain stays.",
+    "lang": "en",
+    "links": []
+  },
+  {
+    "url": "https://kitchen.example.net/sourdough-starter",
+    "title": "Keeping a Sourdough Starter Alive",
+    "description": "Feeding schedules, hydration, and how to tell when a sourdough starter is ready to bake with.",
+    "text": "A sourdough starter is a small ecosystem of wild yeast and bacteria, and it mostly wants routine. Feed it equal weights of flour and water once a day at room temperature, or weekly from the refrigerator. It is ready to bake with when it doubles within six hours of feeding and smells pleasantly sour, like yogurt rather than nail polish. A gray liquid on top is only hunger, not death — pour it off and feed. Whole grain flour wakes a sluggish starter. Name it if you like; you will be keeping it for years.",
+    "lang": "en",
+    "links": []
+  },
+  {
+    "url": "https://ev.example.org/charging-basics",
+    "title": "EV Charging, Level by Level",
+    "description": "Level 1, Level 2, and DC fast charging explained — speeds, costs, and battery health.",
+    "text": "Electric vehicle charging comes in three speeds. Level 1 is a standard wall outlet: slow, a few miles of range per hour, fine for short commutes. Level 2 uses a 240-volt circuit and refills most cars overnight; it is the sweet spot for home charging. DC fast charging is for road trips — up to eighty percent in half an hour — but frequent fast charging warms and gradually wears the battery. Most owners charge to eighty percent daily and save full charges for long drives. Charging at home overnight, on off-peak rates, costs a fraction of gasoline.",
+    "lang": "en",
+    "links": []
+  },
+  {
+    "url": "https://design.example.net/principles-of-minimalism",
+    "title": "Minimalist Design Is Not About Less",
+    "description": "Minimalism in product design: removing until only the intention remains.",
+    "text": "Minimalist design is often mistaken for emptiness. It is actually a discipline of intention: every element that remains must earn its place, and everything that distracts from the user's purpose is removed. Good minimal interfaces use generous whitespace, a restrained monochrome palette, and one clear action per screen. Restraint builds trust — a page with nothing to sell you has no reason to manipulate you. The hardest part is not deleting things; it is knowing which single thing the screen exists to do, and protecting it.",
+    "lang": "en",
+    "links": [
+      "https://privacy.example.org/why-ad-free-matters"
+    ]
+  },
+  {
+    "url": "https://privacy.example.org/why-ad-free-matters",
+    "title": "Why Ad-Free Search Matters",
+    "description": "When the searcher is the customer instead of the product, incentives finally point the right way.",
+    "text": "An advertising-funded search engine has two masters: the person searching and the advertiser paying. Every design decision quietly negotiates between them — sponsored results dressed up to look organic, tracking to make the targeting better, engagement metrics that reward distraction. A subscription-funded engine has one master. It earns money only by being useful, so its ranking can be purely organic, its pages free of ads, and its data collection minimal. Paying a small fee is not a cost; it is buying back the incentive structure. Trust is the product.",
+    "lang": "en",
+    "links": [
+      "https://design.example.net/principles-of-minimalism"
+    ]
+  }
+]

@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Placeholder wordmark below (.wordmark) — swap in the real name and logo when ready. -->
+<title>applegoogle</title>
+<style>
+  :root {
+    --ink: #111111;
+    --paper: #ffffff;
+    --faint: #757575;
+    --line: #e2e2e2;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --ink: #f2f2f2; --paper: #0d0d0d; --faint: #9a9a9a; --line: #262626; }
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: var(--paper);
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  main {
+    width: min(640px, 92vw);
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+  }
+  .home { justify-content: center; }
+  .home .results-meta, .home #results { display: none; }
+  .wordmark {
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-align: center;
+    font-size: 2rem;
+    margin-bottom: 2.2rem;
+    user-select: none;
+  }
+  .searched .wordmark {
+    font-size: 1.05rem;
+    text-align: left;
+    margin: 2.2rem 0 1.4rem;
+  }
+  form { width: 100%; }
+  .box {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 0.85rem 1.4rem;
+    transition: border-color 0.15s ease;
+  }
+  .box:focus-within { border-color: var(--ink); }
+  .box svg { flex: none; opacity: 0.45; }
+  input {
+    flex: 1;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: var(--ink);
+    font: inherit;
+    font-size: 1.05rem;
+  }
+  input::placeholder { color: var(--faint); }
+  .results-meta {
+    color: var(--faint);
+    font-size: 0.8rem;
+    margin: 1.6rem 0 0.4rem;
+  }
+  .result { padding: 1.1rem 0; border-bottom: 1px solid var(--line); }
+  .result:last-child { border-bottom: none; }
+  .result .site { font-size: 0.78rem; color: var(--faint); margin-bottom: 0.15rem; overflow-wrap: anywhere; }
+  .result a.title {
+    color: var(--ink);
+    font-size: 1.08rem;
+    font-weight: 600;
+    text-decoration: none;
+  }
+  .result a.title:hover { text-decoration: underline; }
+  .result .snippet { margin-top: 0.3rem; font-size: 0.92rem; line-height: 1.5; color: var(--ink); opacity: 0.82; }
+  .result .snippet b { font-weight: 600; }
+  .empty { color: var(--faint); padding: 2rem 0; text-align: center; font-size: 0.95rem; }
+  footer {
+    width: min(640px, 92vw);
+    padding: 1.4rem 0 1.8rem;
+    color: var(--faint);
+    font-size: 0.75rem;
+    text-align: center;
+    letter-spacing: 0.01em;
+  }
+</style>
+</head>
+<body>
+  <main id="main" class="home">
+    <h1 class="wordmark">applegoogle</h1>
+    <form id="form" autocomplete="off">
+      <div class="box">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
+        <input id="q" type="text" placeholder="Search" autofocus>
+      </div>
+    </form>
+    <div class="results-meta" id="meta"></div>
+    <div id="results"></div>
+  </main>
+  <footer>No ads. No sponsored results. Nothing is for sale on this page — results are ranked by relevance alone.</footer>
+
+<script>
+  const form = document.getElementById('form');
+  const input = document.getElementById('q');
+  const main = document.getElementById('main');
+  const meta = document.getElementById('meta');
+  const resultsEl = document.getElementById('results');
+
+  const escapeHtml = (s) => s.replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+  function highlight(text, terms) {
+    let out = escapeHtml(text);
+    for (const t of terms) {
+      if (t.length < 2) continue;
+      out = out.replace(new RegExp('(^|[^\\w])(' + t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '[\\w]*)', 'gi'), '$1<b>$2</b>');
+    }
+    return out;
+  }
+
+  async function runSearch(q) {
+    const res = await fetch('/v1/search?q=' + encodeURIComponent(q));
+    const data = await res.json();
+    main.classList.remove('home');
+    main.classList.add('searched');
+
+    if (!res.ok) {
+      meta.textContent = '';
+      resultsEl.innerHTML = '<div class="empty">' + escapeHtml(data.error?.message || 'Something went wrong.') + '</div>';
+      return;
+    }
+    meta.textContent = data.total + (data.total === 1 ? ' result' : ' results') + ' · ' + data.tookMs + ' ms';
+    if (data.results.length === 0) {
+      resultsEl.innerHTML = '<div class="empty">Nothing matched. The index may still be small — crawl more of the web.</div>';
+      return;
+    }
+    resultsEl.innerHTML = data.results.map((r) => (
+      '<div class="result">' +
+        '<div class="site">' + escapeHtml(r.domain) + '</div>' +
+        '<a class="title" href="' + escapeHtml(r.url) + '" rel="noopener">' + escapeHtml(r.title) + '</a>' +
+        '<div class="snippet">' + highlight(r.snippet, data.normalizedTerms) + '</div>' +
+      '</div>'
+    )).join('');
+  }
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const q = input.value.trim();
+    if (!q) return;
+    history.replaceState(null, '', '?q=' + encodeURIComponent(q));
+    runSearch(q);
+  });
+
+  const initial = new URLSearchParams(location.search).get('q');
+  if (initial) { input.value = initial; runSearch(initial); }
+</script>
+</body>
+</html>
