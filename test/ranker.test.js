@@ -81,6 +81,22 @@ test('INTEGRITY: sponsorship-style fields cannot change any score', () => {
   assert.deepEqual(after.scored, before.scored, 'scores moved after injecting sponsorship fields');
 });
 
+test('the star says when an answer is near the top of a page', () => {
+  const filler = 'unrelated preamble sentence about nothing in particular '.repeat(30);
+  const index = buildIndex([
+    { url: 'https://x.example/early', title: 'Notes', text: 'Tidal range is the difference between high and low water. ' + filler },
+    { url: 'https://x.example/late', title: 'Notes', text: filler + ' and finally, tidal range is mentioned here at the very end.' },
+  ]);
+  const { results } = search(index, 'tidal range');
+  const early = results.find((r) => r.url.endsWith('/early'));
+  const late = results.find((r) => r.url.endsWith('/late'));
+
+  assert.ok(early.why.reasons.some((r) => /opening lines|near the top/i.test(r.text)),
+    'a page that answers immediately says so');
+  assert.ok(!late.why.reasons.some((r) => /opening lines|near the top/i.test(r.text)),
+    'a page that buries the answer does not claim otherwise');
+});
+
 test('the star never overstates freshness or mangles counts', () => {
   const index = buildIndex([
     { url: 'https://x.example/old', title: 'Sourdough starter guide', text: 'Feeding a starter.', fetchedAt: '2024-01-01T00:00:00.000Z' },

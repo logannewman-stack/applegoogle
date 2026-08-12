@@ -8,7 +8,9 @@
 export const DEFAULT_SETTINGS = {
   resultsPerPage: 10, //   how many results per page (5–50)
   openInNewTab: false, //  open result links in a new tab
-  autoExpandWhy: false, // show every result's why-receipt without clicking
+  // Reasoning is shown by default. A search engine whose promise is that it
+  // explains itself should not hide the explanation behind a click.
+  autoExpandWhy: true,
   suggestions: true, //    suggest completions while typing
   saveHistory: true, //    false = every search is treated as private
   theme: 'system', //      'system' | 'light' | 'dark'

@@ -172,6 +172,16 @@ export function scoreDocuments(index, query, { now = Date.now(), parsed = null }
       if (entry.f?.[1] > 0) fieldHits.description.add(term);
     }
 
+    // How far into the page you have to read before it starts answering.
+    // Positions run title → description → body, so a small number means the
+    // answer is up top rather than buried below the fold.
+    let firstHit = Infinity;
+    for (const term of matchedTerms) {
+      if (!requiredSet.has(term)) continue;
+      const pos = postingsByTerm.get(term).docs[docId]?.pos?.[0];
+      if (pos !== undefined && pos < firstHit) firstHit = pos;
+    }
+
     const phrase = phraseAnalysis(queryTokens, postingsByTerm, docId);
     const authorityFactor = 1 + WEIGHTS.authority * (doc.authority || 0);
     const proximityFactor = 1 + WEIGHTS.phrase * phrase.score;
@@ -185,6 +195,8 @@ export function scoreDocuments(index, query, { now = Date.now(), parsed = null }
       proximityFactor,
       freshFactor,
       firstPair: phrase.firstPair,
+      firstHit,
+      docLength: doc.len,
       fieldHits,
       requiredMatched: [...matchedTerms].filter((t) => requiredSet.has(t)),
     });
@@ -282,6 +294,18 @@ function buildWhy(doc, detail, queryInfo, now) {
     reasons.push({
       signal: 'phrase_proximity',
       text: `Your exact phrase “${phraseText}” appears here, words together and in order.`,
+    });
+  }
+
+  // Where the answer starts. Only stated when it is genuinely early and not
+  // already covered by "it's in the title".
+  if (detail.firstHit !== undefined && Number.isFinite(detail.firstHit)
+      && inTitle.length === 0 && detail.firstHit <= 120) {
+    reasons.push({
+      signal: 'text_relevance',
+      text: detail.firstHit <= 40
+        ? 'It gets to your answer in the opening lines, not halfway down the page.'
+        : 'Your words turn up near the top of the page, not buried at the bottom.',
     });
   }
 

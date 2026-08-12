@@ -304,6 +304,8 @@ test('settings: defaults, account persistence, validation, enforcement', async (
   const anonBody = await anon.json();
   assert.equal(anonBody.stored, 'defaults');
   assert.equal(anonBody.settings.resultsPerPage, 10);
+  assert.equal(anonBody.settings.autoExpandWhy, true,
+    'reasoning is shown by default — the explanation is the product');
   const anonPut = await fetch(`${base}/v1/settings`, {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
