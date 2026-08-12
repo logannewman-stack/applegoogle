@@ -203,8 +203,9 @@ Open `/v1/stats`. If `discovery.enabled` is `false`, something set
 
 ### `FUNCTION_INVOCATION_TIMEOUT`
 A slow provider held the request open. `vercel.json` allows 60 seconds, and
-discovery gives up after 2.5 by design. If you see this repeatedly your
-provider is unreachable from Vercel — check the key, or switch providers.
+discovery gives up after 9 by design (2.5 when you run it locally, where there
+is already an index to fall back on). If you see this repeatedly your provider
+is unreachable from Vercel — check the key, or switch providers.
 
 ### Deploy fails on install
 There are no dependencies to install. If npm is erroring, something added a

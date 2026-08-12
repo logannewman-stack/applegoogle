@@ -178,3 +178,37 @@ test('domain diversity keeps one site from owning the page', () => {
     'a second domain should appear in the top results',
   );
 });
+
+// ── The other half of honesty ────────────────────────────────────────────────
+// Explaining a result truthfully is worth nothing if the result should never
+// have been shown. A page whose only tie to the query is a stopword is not an
+// answer, and saying "no" is what sends the engine to the web.
+test('HONESTY: a page matching none of your real words is never a result', () => {
+  const index = buildIndex([
+    { url: 'https://x.example/a', title: 'Testing what matters', text: 'The best tests read like documentation of the promise.' },
+    { url: 'https://x.example/b', title: 'Light pollution', text: 'A sky that once showed thousands of stars now shows a few dozen.' },
+    { url: 'https://x.example/c', title: 'Event loop', text: 'Work is queued and drained in order.' },
+  ]);
+
+  // "in" appears everywhere; "pizza" and "cleveland" appear nowhere.
+  const { results } = search(index, 'best pizza in cleveland');
+  for (const hit of results) {
+    assert.ok(hit.why.matched.terms.length >= 1,
+      `${hit.url} was returned having matched none of the query's meaningful words`);
+  }
+
+  // Nothing meaningful matches at all → the honest answer is an empty one.
+  const none = search(index, 'photosynthesis chlorophyll');
+  assert.equal(none.total, 0, 'a question the corpus cannot answer returns nothing');
+});
+
+test('a real match still survives when the strict pass finds too few', () => {
+  const index = buildIndex([
+    { url: 'https://x.example/one', title: 'Sourdough starter guide', text: 'Feeding a starter daily.' },
+  ]);
+  // Three content terms, only one matches — below the 60% bar, so the pool
+  // relaxes. It must relax to "at least one real word", not to "everything".
+  const { results } = search(index, 'sourdough hydration schedule');
+  assert.equal(results.length, 1);
+  assert.equal(results[0].url, 'https://x.example/one');
+});

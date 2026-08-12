@@ -147,16 +147,27 @@ export function scoreDocuments(index, query, { now = Date.now(), parsed = null }
     }
   }
 
-  // Soft AND: prefer docs matching >= 60% of the meaningful query terms;
-  // relax to any-match only when strictness leaves too few results.
+  // Soft AND: prefer docs matching >= 60% of the meaningful query terms.
   const minMatches = Math.max(1, Math.ceil(required.length * 0.6));
   const requiredSet = new Set(required);
-  let pool = [...candidates].filter(([, terms]) => {
+  const contentMatchCount = (terms) => {
     let n = 0;
     for (const t of terms) if (requiredSet.has(t)) n++;
-    return n >= minMatches;
-  });
-  if (pool.length < 5) pool = [...candidates];
+    return n;
+  };
+
+  let pool = [...candidates].filter(([, terms]) => contentMatchCount(terms) >= minMatches);
+
+  // When strictness leaves too little, the bar comes down — but it never
+  // comes off. A page that matches none of your meaningful words is not a
+  // result, however empty that leaves the page: candidates were gathered from
+  // every query token, so without this floor a page whose only connection to
+  // "best pizza in cleveland" is the word "in" ranks as an answer. Returning
+  // nothing is the honest outcome, and it is also what tells the engine to go
+  // and read the web.
+  if (pool.length < 5) {
+    pool = [...candidates].filter(([, terms]) => contentMatchCount(terms) >= 1);
+  }
 
   const scored = [];
   const details = new Map();

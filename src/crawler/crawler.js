@@ -29,11 +29,14 @@ export class Crawler {
     this.lastHitByHost = new Map();
   }
 
-  async politeWait(url) {
+  // `floorMs` lets a caller lower *our own* self-imposed courtesy gap. A
+  // Crawl-delay the site actually asked for is still obeyed in full — that is
+  // the Math.max below, and nothing may lower it.
+  async politeWait(url, floorMs = this.config.crawlDelayMs) {
     const host = new URL(url).hostname;
     const robotsDelay = await this.robots.crawlDelayFor(url);
     const delayMs = Math.min(
-      Math.max(this.config.crawlDelayMs, (robotsDelay ?? 0) * 1000),
+      Math.max(floorMs, (robotsDelay ?? 0) * 1000),
       15000,
     );
     const last = this.lastHitByHost.get(host) || 0;
@@ -42,8 +45,8 @@ export class Crawler {
     this.lastHitByHost.set(host, Date.now());
   }
 
-  async fetchPage(url, { signal = null } = {}) {
-    await this.politeWait(url);
+  async fetchPage(url, { signal = null, delayMs = this.config.crawlDelayMs } = {}) {
+    await this.politeWait(url, delayMs);
     // The caller's deadline (if any) bounds the request as tightly as our
     // own timeout does, so a slow host can never outlast a search.
     const timeout = AbortSignal.timeout(this.config.crawlTimeoutMs);
@@ -62,10 +65,17 @@ export class Crawler {
       throw new Error(`Not HTML (${type.split(';')[0] || 'unknown'})`);
     }
     const buf = await res.arrayBuffer();
-    if (buf.byteLength > this.config.crawlMaxBytes) {
-      throw new Error(`Too large (${buf.byteLength} bytes)`);
-    }
-    return { html: new TextDecoder().decode(buf), finalUrl: res.url || url };
+    // A page over the ceiling is read up to it, not thrown away. The opening
+    // megabytes of a long article are the article; discarding the whole thing
+    // is how "search the web" quietly comes back with nothing — a big
+    // encyclopedia page is exactly the kind of source a question deserves.
+    const over = buf.byteLength > this.config.crawlMaxBytes;
+    const bytes = over ? buf.slice(0, this.config.crawlMaxBytes) : buf;
+    return {
+      html: new TextDecoder().decode(bytes),
+      finalUrl: res.url || url,
+      truncated: over,
+    };
   }
 
   // Fetch and index exactly these URLs, concurrently across hosts.
@@ -75,7 +85,7 @@ export class Crawler {
   // run in parallel; each host stays strictly sequential and rate-limited.
   // Returns { indexed, skipped, errors, remaining } where `remaining` is
   // whatever the deadline cut short.
-  async fetchAll(urls, { deadline = Infinity, log = this.log } = {}) {
+  async fetchAll(urls, { deadline = Infinity, log = this.log, delayMs = this.config.crawlDelayMs } = {}) {
     const byHost = new Map();
     for (const url of urls) {
       let host;
@@ -108,7 +118,8 @@ export class Crawler {
             log(`robots.txt disallows: ${url}`);
             continue;
           }
-          const { html, finalUrl } = await this.fetchPage(url, { signal: controller.signal });
+          const { html, finalUrl, truncated } = await this.fetchPage(url, { signal: controller.signal, delayMs });
+          if (truncated) log(`read the first ${this.config.crawlMaxBytes} bytes of ${url}`);
           const page = extract(html);
           if (page.noindex || (!page.title && page.text.length < 80)) {
             stats.skipped++;

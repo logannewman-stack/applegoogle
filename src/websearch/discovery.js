@@ -98,7 +98,16 @@ export class Discovery {
     // but concurrently across hosts and bounded by a deadline so a search
     // never hangs waiting for a slow site.
     const deadline = started + this.config.discoveryBudgetMs;
-    const stats = await this.crawler.fetchAll(fresh, { deadline, log: this.log });
+    // Providers routinely name several pages on one host — every Wikipedia
+    // result is en.wikipedia.org — and a courtesy gap sized for a bulk crawl
+    // then serializes the whole expansion into the budget, so the search comes
+    // back with nothing. Someone is waiting on this one, so our own gap
+    // shrinks. A Crawl-delay the site actually asked for is still obeyed.
+    const stats = await this.crawler.fetchAll(fresh, {
+      deadline,
+      log: this.log,
+      delayMs: this.config.discoveryDelayMs,
+    });
 
     // Anything the deadline cut short is finished after the response goes
     // out, so the index still gets it — just not on this request's clock.

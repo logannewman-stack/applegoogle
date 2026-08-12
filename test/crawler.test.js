@@ -81,3 +81,70 @@ test('crawler indexes allowed pages, obeys robots.txt and noindex', async () => 
   assert.ok(results.length >= 1);
   assert.ok(results[0].url.endsWith('/tomatoes'));
 });
+
+// A long article is the kind of source a real question deserves. Throwing the
+// whole page away because it ran past a byte ceiling is how "search the web"
+// quietly comes back empty.
+test('an oversized page is read up to the ceiling, not discarded', async () => {
+  const big = http.createServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'text/html' });
+    res.end(`<html><head><title>Very Long Article</title></head><body>`
+      + `<p>Tidal range is the difference between high and low water.</p>`
+      + `<p>${'filler prose about the moon and the sea. '.repeat(40000)}</p></body></html>`);
+  });
+  await new Promise((resolve) => big.listen(0, '127.0.0.1', resolve));
+  const bigOrigin = `http://127.0.0.1:${big.address().port}`;
+
+  try {
+    const index = new SearchIndex({ data: emptyIndexData(), save: async () => {} });
+    const config = makeConfig({ crawlMaxBytes: 64 * 1024, crawlDelayMs: 0 });
+    const crawler = new Crawler(index, config, { log: () => {} });
+
+    const page = await crawler.fetchPage(`${bigOrigin}/article`);
+    assert.equal(page.truncated, true, 'the page was over the ceiling');
+    assert.ok(page.html.length <= 64 * 1024, 'and was cut to it');
+    assert.match(page.html, /Tidal range is the difference/, 'the opening — the part that answers — survived');
+
+    const stats = await crawler.fetchAll([`${bigOrigin}/article`], { log: () => {} });
+    assert.equal(stats.indexed, 1, 'a long page still gets indexed');
+    assert.equal(stats.errors, 0);
+    assert.equal(search(index, 'tidal range').total, 1, 'and is findable afterwards');
+  } finally {
+    big.close();
+    big.closeAllConnections?.();
+  }
+});
+
+test('a caller may shrink our courtesy gap but never the one a site asked for', async () => {
+  const index = new SearchIndex({ data: emptyIndexData(), save: async () => {} });
+
+  // No Crawl-delay in this site's robots.txt, so our own floor is all there is.
+  const fast = new Crawler(index, makeConfig({ crawlDelayMs: 5000 }), { log: () => {} });
+  const started = Date.now();
+  await fast.fetchAll([`${origin}/`, `${origin}/tomatoes`], { delayMs: 0, log: () => {} });
+  assert.ok(Date.now() - started < 4000,
+    'two pages on one host should not cost a bulk-crawl delay while someone waits');
+
+  // Now a site that does ask for one. The override must not touch it.
+  const politeSite = http.createServer((req, res) => {
+    if (req.url === '/robots.txt') {
+      res.writeHead(200, { 'content-type': 'text/plain' });
+      return res.end('User-agent: *\nCrawl-delay: 1');
+    }
+    res.writeHead(200, { 'content-type': 'text/html' });
+    res.end('<html><head><title>Polite</title></head><body><p>Please wait between requests.</p></body></html>');
+  });
+  await new Promise((resolve) => politeSite.listen(0, '127.0.0.1', resolve));
+  const politeOrigin = `http://127.0.0.1:${politeSite.address().port}`;
+
+  try {
+    const crawler = new Crawler(index, makeConfig({ crawlDelayMs: 0 }), { log: () => {} });
+    const t0 = Date.now();
+    await crawler.fetchAll([`${politeOrigin}/a`, `${politeOrigin}/b`], { delayMs: 0, log: () => {} });
+    assert.ok(Date.now() - t0 >= 1000,
+      "a site's own Crawl-delay is obeyed even when the caller asks for speed");
+  } finally {
+    politeSite.close();
+    politeSite.closeAllConnections?.();
+  }
+});

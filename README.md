@@ -32,7 +32,7 @@ standard-library Node.
 ```bash
 npm run seed     # load sample documents so search works immediately
 npm start        # http://127.0.0.1:3000
-npm test         # 88 tests, including the ranking-integrity test
+npm test         # 92 tests, including the ranking-integrity test
 ```
 
 Open http://127.0.0.1:3000 and search for *pour over coffee*, *closures*, or
@@ -173,9 +173,14 @@ permanently yours, so over time the provider matters less and less.
 - Pages are fetched **concurrently across hosts** (politeness is a per-host
   obligation, so one host never waits on another) and each host stays strictly
   sequential and rate-limited.
-- A search never hangs on a slow site: `DISCOVERY_BUDGET_MS` (default 2.5s)
-  bounds the wait, in-flight requests are aborted at the deadline, and anything
-  cut short finishes in the background so the index still gets it.
+- A search never hangs on a slow site: `DISCOVERY_BUDGET_MS` (2.5s locally,
+  9s where there is no index to fall back on) bounds the wait, in-flight
+  requests are aborted at the deadline, and anything cut short finishes in the
+  background so the index still gets it.
+- Politeness is never traded away for speed: while somebody is waiting,
+  Northstar shortens *its own* courtesy gap between two pages on one host
+  (`DISCOVERY_DELAY_MS`), but a `Crawl-delay` the site asked for is obeyed in
+  full regardless.
 - The same query will not re-expand for `DISCOVERY_COOLDOWN_MS` (default 6h),
   identical concurrent expansions share a single run, and already-indexed URLs
   are never refetched.
@@ -244,7 +249,7 @@ so Node's fetch uses `HTTPS_PROXY`.
 | `src/api/` | HTTP app, accounts/keys, settings, history, sessions |
 | `public/index.html` | The Northstar web app (installable PWA) |
 | `ios/` | SwiftUI `WKWebView` shell for the App Store path |
-| `test/` | 88 tests, run with `npm test` |
+| `test/` | 92 tests, run with `npm test` |
 
 ## API
 

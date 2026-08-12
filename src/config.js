@@ -89,14 +89,24 @@ export function makeConfig(overrides = {}) {
     discoveryMinScore: num(env.DISCOVERY_MIN_SCORE, 1.6),
     discoveryCooldownMs: num(env.DISCOVERY_COOLDOWN_MS, 6 * 60 * 60 * 1000),
     // How long a search may wait for new pages before answering with what it
-    // has; anything slower keeps loading in the background.
-    discoveryBudgetMs: num(env.DISCOVERY_BUDGET_MS, 2500),
+    // has; anything slower keeps loading in the background. A serverless
+    // function gets a whole minute to answer, and a first-time query there has
+    // no index to fall back on, so it is worth several seconds to come back
+    // with real pages instead of instantly with nothing.
+    discoveryBudgetMs: num(env.DISCOVERY_BUDGET_MS, ephemeral ? 9000 : 2500),
+    // Our own courtesy gap between two pages on the same host while somebody
+    // waits. Bulk crawling still uses the full crawlDelayMs; a site's own
+    // Crawl-delay outranks both.
+    discoveryDelayMs: num(env.DISCOVERY_DELAY_MS, 300),
 
     // Crawler politeness
     crawlUserAgent: env.CRAWL_USER_AGENT || 'northstar-crawler/0.3 (respectful; obeys robots.txt)',
     crawlDelayMs: num(env.CRAWL_DELAY_MS, 1000),
     crawlTimeoutMs: num(env.CRAWL_TIMEOUT_MS, 10000),
-    crawlMaxBytes: num(env.CRAWL_MAX_BYTES, 2 * 1024 * 1024),
+    // Real reference pages are big — a long encyclopedia article can run past
+    // two megabytes of markup, and those are exactly the sources a question
+    // deserves. Anything over the ceiling is read up to it, never discarded.
+    crawlMaxBytes: num(env.CRAWL_MAX_BYTES, 6 * 1024 * 1024),
 
     ...overrides,
   };
