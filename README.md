@@ -115,8 +115,7 @@ only some of your words says which ones are missing.
 
 ```bash
 # 1. A search index of the whole web, running on your machine
-docker run -d --name searxng -p 8888:8080 \
-  -e SEARXNG_SETTINGS__SEARCH__FORMATS='["html","json"]' searxng/searxng
+docker compose up -d
 
 # 2. Point Northstar at it (verifies end to end before it finishes)
 npm run setup:web -- --provider=searxng --url=http://localhost:8888

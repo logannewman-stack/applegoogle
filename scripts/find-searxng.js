@@ -106,11 +106,10 @@ const working = results.filter((r) => r.ok).sort((a, b) => a.ms - b.ms);
 
 if (working.length === 0) {
   console.log('No public instance answered with JSON.\n');
-  console.log('This happens — the JSON API is off by default and most operators leave it off.');
-  console.log('Run your own instead. It takes one command, never rate-limits you,');
+  console.log('This is normal — the JSON API is off by default and most operators');
+  console.log('leave it off. Run your own instead. One command, no rate limit,');
   console.log('and nobody else sees your queries:\n');
-  console.log('  docker run -d --name searxng -p 8888:8080 \\');
-  console.log("    -e SEARXNG_SETTINGS__SEARCH__FORMATS='[\"html\",\"json\"]' searxng/searxng\n");
+  console.log('  docker compose up -d');
   console.log('  npm run setup:web -- --provider=searxng --url=http://localhost:8888\n');
   process.exit(1);
 }

@@ -79,7 +79,7 @@ if (!config.webDiscovery) {
     fail(`${provider.label} has no API key`, '', `set ${provider.keyEnv} — see ${PROVIDER_NOTES[config.searchProvider]?.signup}`);
   } else if (config.searchProvider === 'searxng' && !(await searxReachable(config))) {
     fail('SearXNG is not reachable', config.searxngUrl,
-      `start one:  docker run -d --name searxng -p 8888:8080 -e SEARXNG_SETTINGS__SEARCH__FORMATS='["html","json"]' searxng/searxng`);
+      `start one:  docker compose up -d`);
   } else {
     pass(`Provider configured`, provider.label);
     if (provider.retired) note('That provider is retired upstream', 'verify it still answers for your account');

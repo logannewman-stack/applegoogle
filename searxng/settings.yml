@@ -1,0 +1,46 @@
+# SearXNG configuration for Northstar.
+#
+# `use_default_settings: true` means this file only overrides what it names —
+# every engine, category and default SearXNG ships with stays as it is.
+#
+# Two settings do the actual work, and both are the reason a stock SearXNG
+# refuses to talk to a program:
+#
+#   search.formats  — the JSON API is off by default. Without "json" here,
+#                     every request Northstar makes comes back as a web page
+#                     it cannot read, or a 403.
+#
+#   server.limiter  — SearXNG's bot limiter blocks anything that does not look
+#                     like a browser, which is exactly what Northstar is. This
+#                     instance listens on localhost for one program, so the
+#                     limiter protects nothing and blocks everything.
+#
+# Neither is a security hole here: nothing outside your machine can reach this
+# unless you publish the port yourself.
+
+use_default_settings: true
+
+server:
+  # Overridden by SEARXNG_SECRET in docker-compose.yml. SearXNG refuses to
+  # start without one.
+  secret_key: "set-by-docker-compose"
+  limiter: false
+  public_instance: false
+  image_proxy: false
+
+search:
+  formats:
+    - html
+    - json
+  safe_search: 0
+  autocomplete: ""
+
+general:
+  instance_name: "Northstar discovery"
+  # Nothing about a query is written down here. Northstar's own privacy stance
+  # would mean very little if the thing it asks kept a log.
+  donation_url: false
+  enable_metrics: false
+
+ui:
+  static_use_hash: true

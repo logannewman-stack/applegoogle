@@ -1,0 +1,39 @@
+# SearXNG, configured for Northstar, in one command:
+#
+#   docker compose up -d
+#
+# This runs your own metasearch instance on http://localhost:8888. Nothing to
+# sign up for, no API key, no shared rate limit, and no third party seeing what
+# you search. It is the honest version of "search the whole web".
+#
+# The settings file next to this one enables the JSON API and turns off the bot
+# limiter — the two things that otherwise make a stock SearXNG refuse to answer
+# a program. See searxng/settings.yml for why each one matters.
+
+services:
+  searxng:
+    image: searxng/searxng:latest
+    container_name: northstar-searxng
+    restart: unless-stopped
+    ports:
+      # Bound to localhost on purpose: this instance is for the Northstar on
+      # this machine, not for the internet.
+      - "127.0.0.1:8888:8080"
+    volumes:
+      - ./searxng:/etc/searxng:rw
+    environment:
+      - SEARXNG_BASE_URL=http://localhost:8888/
+      # SearXNG will not start without a secret. Any value works locally;
+      # override it with `SEARXNG_SECRET=… docker compose up -d` if you like.
+      - SEARXNG_SECRET=${SEARXNG_SECRET:-northstar-local-development-secret}
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    logging:
+      driver: json-file
+      options:
+        max-size: "1m"
+        max-file: "1"

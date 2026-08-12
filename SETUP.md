@@ -77,12 +77,11 @@ seeing your queries.
 **3a. Start SearXNG** (leave Docker running):
 
 ```bash
-docker run -d --name searxng -p 8888:8080 \
-  -e SEARXNG_SETTINGS__SEARCH__FORMATS='["html","json"]' \
-  searxng/searxng
+docker compose up -d
 ```
 
-**You should see:** a long container ID. Confirm it is up:
+**You should see:** `Container northstar-searxng  Started`. Give it a few
+seconds on first run, then confirm it answers:
 
 ```bash
 curl -s "http://localhost:8888/search?q=test&format=json" | head -c 100
@@ -217,13 +216,15 @@ docker ps --filter name=searxng
 ```
 Nothing listed? Start it again with the command in Step 3a.
 
-If it is running but `format=json` returns an error, the JSON API is switched
-off. Recreate it with the format enabled:
+If it is running but `format=json` returns an error, it is using its own
+settings rather than the ones in this repo. Rebuild it:
 ```bash
-docker rm -f searxng
-docker run -d --name searxng -p 8888:8080 \
-  -e SEARXNG_SETTINGS__SEARCH__FORMATS='["html","json"]' searxng/searxng
+docker compose down
+docker compose up -d
 ```
+`searxng/settings.yml` is what makes it answer a program at all — it turns the
+JSON API on and the bot limiter off. A stock SearXNG has both the other way
+round, which is why a hand-run container refuses Northstar.
 
 ### Searches never reach the web
 Run `npm run doctor`. It checks, in order: the index, outbound HTTPS, your

@@ -28,13 +28,15 @@ async function getJson(url, { headers = {}, timeoutMs = 8000, fetchImpl = fetch 
 // ── SearXNG ───────────────────────────────────────────────────────────
 // Open-source metasearch. No key, no account, and it covers the whole web,
 // which makes it the fastest honest way to get Northstar searching properly.
-// Point it at a public instance, or run your own in one command:
+// Point it at public instances (SEARXNG_URL takes a comma-separated list),
+// or run your own in one command, which is better in every way:
 //
-//   docker run -d --name searxng -p 8888:8080 \
-//     -e SEARXNG_SETTINGS__SEARCH__FORMATS='["html","json"]' searxng/searxng
+//   docker compose up -d
 //
-// Self-hosting is the better answer: no shared rate limits, nobody else
-// seeing your queries, and the JSON format is guaranteed to be enabled.
+// The repo ships the settings that make a stock SearXNG answer a program at
+// all: the JSON API enabled, and the bot limiter off. Without both, requests
+// come back as web pages or 403s.
+//
 // SEARXNG_URL takes a comma-separated list, not just one address. Any single
 // public instance is unreliable — the JSON API gets switched off, the rate
 // limiter trips, the host goes down for a weekend — but the pool as a whole is
@@ -89,8 +91,8 @@ export const searxng = {
         `No SearXNG instance answered (tried ${ordered.length}).\n  `
         + failures.join('\n  ')
         + '\n\nFind instances that work: npm run find-searxng'
-        + '\nOr run your own, which never rate-limits you:'
-        + "\n  docker run -d --name searxng -p 8888:8080 -e SEARXNG_SETTINGS__SEARCH__FORMATS='[\"html\",\"json\"]' searxng/searxng",
+        + '\nOr run your own, which never rate-limits you and needs no account:'
+        + '\n  docker compose up -d',
       ),
       { status: 502, code: 'searxng_unreachable' },
     );
@@ -179,7 +181,7 @@ export const PROVIDER_NOTES = {
     recommended: true,
     independence: 'Open-source metasearch you can run yourself. No key, no account, whole-web coverage.',
     cost: 'Free. Self-host with one docker command, or use a public instance.',
-    signup: 'docker run -d --name searxng -p 8888:8080 -e SEARXNG_SETTINGS__SEARCH__FORMATS=\'["html","json"]\' searxng/searxng',
+    signup: 'docker compose up -d  (config ships in the repo — JSON API on, bot limiter off)',
   },
   brave: {
     recommended: false,

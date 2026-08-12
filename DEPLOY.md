@@ -72,8 +72,47 @@ fly deploy
 a new one. The volume is the step people skip and then wonder why the index
 keeps resetting — without it you have paid for a slower Vercel.
 
-Then give it web search (comma-separated list, see
-[Option A](#7-decide-how-much-of-the-web-it-can-see)):
+### Give it its own SearXNG
+
+You can point it at public instances, but on a host you control there is a
+better answer: run SearXNG next to Northstar as a second Fly app, reachable
+only from the first. No volunteers, no shared rate limit, no third party
+seeing a single query — and nothing extra to pay, because it needs no volume.
+
+```bash
+mkdir -p ../northstar-searxng && cd ../northstar-searxng
+fly launch --no-deploy --image searxng/searxng:latest --name northstar-searxng
+```
+
+In the `fly.toml` it writes, make it private and turn on the two settings a
+stock SearXNG has the wrong way round for a program:
+
+```toml
+[env]
+  SEARXNG_BASE_URL = "http://northstar-searxng.flycast/"
+  SEARXNG_SETTINGS_PATH = "/etc/searxng/settings.yml"
+
+[http_service]
+  internal_port = 8080
+  # No public address: only apps inside your Fly network can reach it.
+  auto_stop_machines = true
+  auto_start_machines = true
+```
+
+Copy this repo's `searxng/settings.yml` into that app (it is the file that
+enables the JSON API and disables the bot limiter), then `fly deploy`.
+
+Back in the Northstar app, point at it over Fly's private network:
+
+```bash
+cd -
+fly secrets set SEARXNG_URL="http://northstar-searxng.flycast:8080"
+```
+
+`.flycast` addresses are internal — that instance has no public URL at all.
+
+**Or, without the second app:** public instances, comma-separated.
+`npm run find-searxng` prints a list that works.
 
 ```bash
 fly secrets set SEARXNG_URL="https://a.example,https://b.example"
