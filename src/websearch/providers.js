@@ -25,6 +25,46 @@ async function getJson(url, { headers = {}, timeoutMs = 8000, fetchImpl = fetch 
   return res.json();
 }
 
+// ── SearXNG ───────────────────────────────────────────────────────────
+// Open-source metasearch. No key, no account, and it covers the whole web,
+// which makes it the fastest honest way to get Northstar searching properly.
+// Point it at a public instance, or run your own in one command:
+//
+//   docker run -d --name searxng -p 8888:8080 \
+//     -e SEARXNG_SETTINGS__SEARCH__FORMATS='["html","json"]' searxng/searxng
+//
+// Self-hosting is the better answer: no shared rate limits, nobody else
+// seeing your queries, and the JSON format is guaranteed to be enabled.
+export const searxng = {
+  id: 'searxng',
+  needsKey: false,
+  label: 'SearXNG (open metasearch, no key)',
+  async discover(query, { limit = 8, config = {}, fetchImpl = fetch } = {}) {
+    const base = (config.searxngUrl || 'http://localhost:8888').replace(/\/+$/, '');
+    const api = `${base}/search?q=${encodeURIComponent(query)}&format=json&language=en&safesearch=0`;
+    let data;
+    try {
+      data = await getJson(api, { fetchImpl, timeoutMs: config.crawlTimeoutMs || 10000 });
+    } catch (err) {
+      // The commonest failure by far: an instance that serves HTML but has
+      // the JSON format switched off. Say so, and say what to do about it.
+      if (err.status === 403 || err.status === 404) {
+        throw Object.assign(
+          new Error(`That SearXNG instance (${base}) will not return JSON. Most public instances disable it. Run your own instead:\n`
+            + `  docker run -d --name searxng -p 8888:8080 -e SEARXNG_SETTINGS__SEARCH__FORMATS='["html","json"]' searxng/searxng\n`
+            + '  then: SEARXNG_URL=http://localhost:8888'),
+          { status: 502, code: 'searxng_json_disabled' },
+        );
+      }
+      throw Object.assign(
+        new Error(`Could not reach SearXNG at ${base}: ${err.message}. Is it running?`),
+        { status: 502, code: 'searxng_unreachable' },
+      );
+    }
+    return (data?.results || []).map((r) => r.url).filter(Boolean).slice(0, limit);
+  },
+};
+
 // ── Wikipedia / MediaWiki ─────────────────────────────────────────────
 // Keyless and open. A good default: real, substantial, crawlable pages.
 export const wikipedia = {
@@ -98,13 +138,19 @@ export const bing = {
   },
 };
 
-export const PROVIDERS = { wikipedia, brave, google: googleCse, bing };
+export const PROVIDERS = { searxng, wikipedia, brave, google: googleCse, bing };
 
 // Guidance shown by `npm run setup:web`. Costs move — verify before relying
 // on them; these are recorded as of the last time this file was touched.
 export const PROVIDER_NOTES = {
-  brave: {
+  searxng: {
     recommended: true,
+    independence: 'Open-source metasearch you can run yourself. No key, no account, whole-web coverage.',
+    cost: 'Free. Self-host with one docker command, or use a public instance.',
+    signup: 'docker run -d --name searxng -p 8888:8080 -e SEARXNG_SETTINGS__SEARCH__FORMATS=\'["html","json"]\' searxng/searxng',
+  },
+  brave: {
+    recommended: false,
     independence: 'Independent index — Brave runs its own crawler, so Northstar is not quietly asking Google.',
     cost: 'Free tier available (~2k queries/month at time of writing), paid tiers beyond that.',
     signup: 'https://brave.com/search/api/',

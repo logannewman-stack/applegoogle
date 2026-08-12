@@ -26,7 +26,7 @@ const dim = (s) => `\x1b[2m${s}\x1b[0m`;
 const ok = (s) => `\x1b[32m${s}\x1b[0m`;
 const bad = (s) => `\x1b[31m${s}\x1b[0m`;
 
-const ORDER = ['brave', 'wikipedia', 'google', 'bing'];
+const ORDER = ['searxng', 'brave', 'wikipedia', 'google', 'bing'];
 
 function printChoices() {
   console.log(`\n${bold('How should Northstar find pages it has never seen?')}\n`);
@@ -51,16 +51,27 @@ async function main() {
   if (interactive) {
     printChoices();
     rl = createInterface({ input: stdin, output: stdout });
-    const answer = (await rl.question('Choose 1-4 (or press enter for Brave): ')).trim();
-    providerId = ORDER[(Number(answer) || 1) - 1] || 'brave';
+    const answer = (await rl.question(`Choose 1-${ORDER.length} (or press enter for SearXNG — no key needed): `)).trim();
+    providerId = ORDER[(Number(answer) || 1) - 1] || 'searxng';
   }
-  providerId ||= 'brave';
+  providerId ||= 'searxng';
 
   if (!PROVIDERS[providerId]) {
     console.error(bad(`Unknown provider '${providerId}'. Available: ${ORDER.join(', ')}.`));
     process.exit(1);
   }
   const provider = PROVIDERS[providerId];
+
+  // SearXNG needs a URL rather than a key.
+  let searxUrl = flag('url');
+  if (providerId === 'searxng' && !searxUrl) {
+    if (rl) {
+      console.log(`\n${dim('Run your own instance (recommended — no shared limits, nobody else sees your queries):')}`);
+      console.log(dim(`  ${PROVIDER_NOTES.searxng.signup}\n`));
+      searxUrl = (await rl.question('SearXNG URL [http://localhost:8888]: ')).trim();
+    }
+    searxUrl ||= 'http://localhost:8888';
+  }
 
   if (provider.needsKey && !key) {
     if (!rl) {
@@ -86,6 +97,7 @@ async function main() {
     'WEB_DISCOVERY=1', `SEARCH_PROVIDER=${providerId}`];
   if (keyVar && key) lines.push(`${keyVar}=${key}`);
   if (cseId) lines.push(`GOOGLE_CSE_ID=${cseId}`);
+  if (searxUrl) lines.push(`SEARXNG_URL=${searxUrl}`);
 
   const envPath = new URL('../.env.local', import.meta.url);
   let existing = '';
@@ -93,7 +105,8 @@ async function main() {
   const kept = existing.split('\n').filter((l) => {
     const k = l.split('=')[0];
     return l.trim() && !l.startsWith('#')
-      && !['WEB_DISCOVERY', 'SEARCH_PROVIDER', 'BRAVE_API_KEY', 'GOOGLE_API_KEY', 'BING_API_KEY', 'GOOGLE_CSE_ID'].includes(k);
+      && !['WEB_DISCOVERY', 'SEARCH_PROVIDER', 'BRAVE_API_KEY', 'GOOGLE_API_KEY',
+           'BING_API_KEY', 'GOOGLE_CSE_ID', 'SEARXNG_URL'].includes(k);
   });
   await writeFile(envPath, [...lines, ...kept].join('\n') + '\n', 'utf8');
   console.log(`\n${ok('✓')} wrote .env.local (${providerId}${key ? ' + key' : ''})`);
@@ -104,6 +117,7 @@ async function main() {
     searchProvider: providerId,
     searchApiKey: key || null,
     searchEngineId: cseId || null,
+    ...(searxUrl ? { searxngUrl: searxUrl } : {}),
   });
   try {
     getProvider(config);

@@ -218,6 +218,37 @@ test('providers needing a key say so plainly', () => {
   assert.equal(wikipedia.needsKey, false);
 });
 
+test('the SearXNG provider needs no key and returns only URLs', async () => {
+  const { searxng } = await import('../src/websearch/providers.js');
+  assert.equal(searxng.needsKey, false);
+  assert.equal(getProvider(makeConfig({ searchProvider: 'searxng' })).id, 'searxng',
+    'usable with no key at all');
+
+  let asked = null;
+  const fakeFetch = async (url) => {
+    asked = url;
+    return { ok: true, json: async () => ({ results: [
+      { url: 'https://a.example/one', title: 'One', content: '…' },
+      { url: 'https://b.example/two', title: 'Two', content: '…' },
+    ] }) };
+  };
+  const urls = await searxng.discover('leaky faucet', {
+    limit: 5, config: makeConfig({ searxngUrl: 'http://localhost:8888' }), fetchImpl: fakeFetch,
+  });
+  assert.deepEqual(urls, ['https://a.example/one', 'https://b.example/two']);
+  assert.match(asked, /format=json/);
+  assert.match(asked, /leaky\+faucet|leaky%20faucet/);
+});
+
+test('a SearXNG instance with JSON disabled explains how to fix it', async () => {
+  const { searxng } = await import('../src/websearch/providers.js');
+  const forbidden = async () => ({ ok: false, status: 403, json: async () => ({}) });
+  await assert.rejects(
+    () => searxng.discover('x', { config: makeConfig(), fetchImpl: forbidden }),
+    (err) => err.code === 'searxng_json_disabled' && /docker run/.test(err.message),
+  );
+});
+
 test('the Wikipedia provider asks for URLs and returns only URLs', async () => {
   const calls = [];
   const fakeFetch = async (url) => {

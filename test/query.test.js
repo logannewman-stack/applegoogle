@@ -138,6 +138,23 @@ test('nearestTerm will not turn a short word into a different one', () => {
   assert.equal(nearestTerm(index, 'cart'), 'car');
 });
 
+test('two edits on a short word is a different word, not a typo', () => {
+  // The case that broke a real search: "leaky faucet" became "learn faucet",
+  // which changed the question and hid the fact that we had no answer.
+  const index = buildIndex([
+    { url: 'https://a.example/1', title: 'Learning', text: 'You will learn to learn, and learn again.' },
+  ]);
+  assert.equal(nearestTerm(index, 'leaky'), null, '"leaky" must not become "learn"');
+  assert.equal(search(index, 'leaky faucet').correction, null);
+
+  // Long words still get the wider budget, because typos are likelier there.
+  const long = buildIndex([
+    { url: 'https://a.example/2', title: 'Polaris', text: 'Polaris marks true north for navigators.' },
+  ]);
+  assert.equal(nearestTerm(long, 'polarus'), 'polaris');
+  assert.ok(search(long, 'polarus').correction, 'a real typo is still fixed');
+});
+
 test('pagination reports its position honestly', () => {
   const docs = [];
   for (let i = 0; i < 25; i++) {

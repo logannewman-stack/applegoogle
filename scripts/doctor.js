@@ -30,6 +30,14 @@ const note = (name, detail) => console.log(`${warn('•')} ${name}${detail ? dim
 const config = makeConfig();
 console.log(bold('\nNorthstar — web search diagnosis\n'));
 
+async function searxReachable(cfg) {
+  try {
+    const res = await fetch(`${cfg.searxngUrl.replace(/\/+$/, '')}/search?q=test&format=json`,
+      { signal: AbortSignal.timeout(6000) });
+    return res.ok;
+  } catch { return false; }
+}
+
 // ── 1. The index itself ────────────────────────────────────────────────
 const store = await new JsonStore(config.dataDir, 'index', emptyIndexData()).load();
 const index = new SearchIndex(store);
@@ -69,6 +77,9 @@ if (!config.webDiscovery) {
     fail('Unknown SEARCH_PROVIDER', config.searchProvider, `use one of: ${Object.keys(PROVIDERS).join(', ')}`);
   } else if (provider.needsKey && !config.searchApiKey) {
     fail(`${provider.label} has no API key`, '', `set ${provider.keyEnv} — see ${PROVIDER_NOTES[config.searchProvider]?.signup}`);
+  } else if (config.searchProvider === 'searxng' && !(await searxReachable(config))) {
+    fail('SearXNG is not reachable', config.searxngUrl,
+      `start one:  docker run -d --name searxng -p 8888:8080 -e SEARXNG_SETTINGS__SEARCH__FORMATS='["html","json"]' searxng/searxng`);
   } else {
     pass(`Provider configured`, provider.label);
     if (provider.retired) note('That provider is retired upstream', 'verify it still answers for your account');

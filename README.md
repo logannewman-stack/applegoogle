@@ -32,7 +32,7 @@ standard-library Node.
 ```bash
 npm run seed     # load sample documents so search works immediately
 npm start        # http://127.0.0.1:3000
-npm test         # 78 tests, including the ranking-integrity test
+npm test         # 81 tests, including the ranking-integrity test
 ```
 
 Open http://127.0.0.1:3000 and search for *pour over coffee*, *closures*, or
@@ -104,15 +104,30 @@ only some of your words says which ones are missing.
 
 ## Searching the real web
 
+**The fastest path — no API key, no account, about two minutes:**
+
 ```bash
-npm run setup:web     # choose a provider, store the key, verify it end to end
-npm run bootstrap     # crawl real pages into an index of your own
-npm start
-npm run doctor        # if anything misbehaves, this says exactly what
+# 1. A search index of the whole web, running on your machine
+docker run -d --name searxng -p 8888:8080 \
+  -e SEARXNG_SETTINGS__SEARCH__FORMATS='["html","json"]' searxng/searxng
+
+# 2. Point Northstar at it (verifies end to end before it finishes)
+npm run setup:web -- --provider=searxng --url=http://localhost:8888
+
+# 3. Go
+npm run seed && npm start
 ```
 
-That is the whole setup. The rest of this section is why it is built this way,
-and what to choose.
+Now ask it anything. A question the index cannot answer well sends Northstar
+out to read the web, index what it finds, and rank it — and every result still
+explains itself. `npm run doctor` diagnoses anything that misbehaves.
+
+Prefer not to run Docker? `npm run setup:web` also accepts a public SearXNG
+instance URL, though most public instances disable the JSON API. Wikipedia
+(`--provider=wikipedia`) needs nothing at all but only covers encyclopedia
+articles.
+
+The rest of this section is why it is built this way, and what to choose.
 
 ### The rule that shapes everything
 
@@ -132,8 +147,9 @@ nothing but addresses.
 
 | Provider | Independence | Cost | Verdict |
 | --- | --- | --- | --- |
-| **Brave Search API** | Its own crawler and index | Free tier, then paid per thousand | **Start here** — real coverage without asking Google |
-| **Wikipedia** | Fully open, no key at all | Free | Great for testing; encyclopedia content only |
+| **SearXNG** | Open source, run it yourself | Free | **Start here** — no key, whole-web coverage, one docker command |
+| **Brave Search API** | Its own crawler and index | Free tier, then paid per thousand | Best hosted option; needs an account |
+| **Wikipedia** | Fully open, no key at all | Free | Good for testing; encyclopedia content only |
 | **Google Programmable Search** | Google's index | Small daily free quota, then paid, daily cap | Broadest reach, but your independent engine is calling Google |
 | **Bing Web Search** | Microsoft's index | — | Microsoft retired these APIs in 2025; verify before choosing |
 
@@ -221,7 +237,7 @@ so Node's fetch uses `HTTPS_PROXY`.
 | `src/api/` | HTTP app, accounts/keys, settings, history, sessions |
 | `public/index.html` | The Northstar web app (installable PWA) |
 | `ios/` | SwiftUI `WKWebView` shell for the App Store path |
-| `test/` | 78 tests, run with `npm test` |
+| `test/` | 81 tests, run with `npm test` |
 
 ## API
 

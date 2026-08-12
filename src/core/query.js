@@ -100,7 +100,10 @@ export function editDistance(a, b, max = 2) {
 // Nearest indexed term to a term the index has never seen.
 // Short words get a tighter budget so "cat" cannot become "car".
 export function nearestTerm(index, term, { vocabulary } = {}) {
-  const max = term.length <= 4 ? 1 : 2;
+  // Two edits on a short word is not a typo, it is a different word:
+  // "leaky" → "learn" is distance 2 and changes the meaning completely.
+  // Only long words get the wider budget.
+  const max = term.length <= 6 ? 1 : 2;
   const vocab = vocabulary || Object.keys(index.data.postings);
   let best = null;
   let bestScore = Infinity;

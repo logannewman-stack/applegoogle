@@ -262,6 +262,21 @@
   }
   .optag b { color: var(--ink); font-weight: 600; }
 
+  /* Look further — sends Northstar out to read the web for this query */
+  .further {
+    display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap;
+    margin: var(--s5) 0 var(--s4); padding: var(--s4);
+    border: 1px solid var(--line); border-radius: 14px; background: var(--wash);
+    font-size: .88rem; color: var(--faint);
+  }
+  .further .mark { width: 1.1em; height: 1.1em; opacity: .6; flex: none; }
+  .further span { flex: 1; min-width: 12rem; }
+  .further button {
+    border: 1px solid var(--ink); background: var(--ink); color: var(--paper);
+    border-radius: 999px; padding: .45rem 1.1rem; font-size: .85rem; cursor: pointer; flex: none;
+  }
+  .further button[disabled] { opacity: .55; cursor: default; }
+
   /* Pagination */
   .pager {
     display: flex; align-items: center; justify-content: space-between; gap: var(--s4);
@@ -898,6 +913,18 @@
       </div>`;
     }).join('');
 
+    // Offer to go and read the web when what we have looks thin.
+    const weak = !data.results.length || (data.results[0].score ?? 0) < 2 || data.total < 3;
+    if (data.canLookFurther && weak) {
+      const further = document.createElement('div');
+      further.className = 'further';
+      further.innerHTML = `${MARK}
+        <span>Not what you were after? Northstar can go and read the web for this,
+        then rank what it finds by the same signals.</span>
+        <button id="lookFurther">Look further</button>`;
+      els.results.appendChild(further);
+    }
+
     // Pagination — the API always supported pages; now you can reach them.
     const totalPages = data.totalPages || 1;
     if (totalPages > 1) {
@@ -936,6 +963,15 @@
     }
     const literal = els.results.querySelector('[data-literal]');
     if (literal) literal.addEventListener('click', () => runSearch(data.correction.from, { literal: true }));
+
+    const further = $('lookFurther');
+    if (further) {
+      further.addEventListener('click', () => {
+        further.disabled = true;
+        further.textContent = 'Reading…';
+        runSearch(data.query, { deep: true });
+      });
+    }
   }
 
   // "brew.example.org › guides › pour-over" — the address as a person reads
@@ -970,7 +1006,7 @@
     return out + esc(text.slice(last));
   }
 
-  async function runSearch(q, { page = 1, literal = false } = {}) {
+  async function runSearch(q, { page = 1, literal = false, deep = false } = {}) {
     const tab = activeTab();
     tab.q = q; tab.fromCache = false;
     els.q.value = q;
@@ -980,7 +1016,7 @@
     let data;
     try {
       const res = await fetch(`/v1/search?q=${encodeURIComponent(q)}&per_page=${settings.resultsPerPage}`
-        + `&page=${page}${literal ? '&literal=1' : ''}${isPrivate ? '&private=1' : ''}`);
+        + `&page=${page}${literal ? '&literal=1' : ''}${deep ? '&deep=1' : ''}${isPrivate ? '&private=1' : ''}`);
       data = await res.json().catch(() => ({}));
       if (!res.ok) {
         tab.data = null; saveState();

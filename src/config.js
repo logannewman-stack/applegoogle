@@ -51,12 +51,17 @@ export function makeConfig(overrides = {}) {
     // candidate URLs for queries the local index answers poorly, and Northstar
     // fetches, indexes and ranks those pages itself.
     webDiscovery: env.WEB_DISCOVERY === '1',
-    searchProvider: env.SEARCH_PROVIDER || 'wikipedia', // needs no key
+    searchProvider: env.SEARCH_PROVIDER || 'searxng', // needs no key
+    searxngUrl: env.SEARXNG_URL || 'http://localhost:8888',
     searchApiKey: env.BRAVE_API_KEY || env.GOOGLE_API_KEY || env.BING_API_KEY || env.SEARCH_API_KEY || null,
     searchEngineId: env.GOOGLE_CSE_ID || null,
     wikipediaHost: env.WIKIPEDIA_HOST || 'en.wikipedia.org',
     discoveryLimit: num(env.DISCOVERY_LIMIT, 6), //  candidate URLs per expansion
     discoveryMinResults: num(env.DISCOVERY_MIN_RESULTS, 3), // expand when fewer than this
+    // …and also when what we do have is weak. Without this, a handful of
+    // barely-relevant local pages would suppress the expansion that a query
+    // about anything outside the index actually needs.
+    discoveryMinScore: num(env.DISCOVERY_MIN_SCORE, 1.6),
     discoveryCooldownMs: num(env.DISCOVERY_COOLDOWN_MS, 6 * 60 * 60 * 1000),
     // How long a search may wait for new pages before answering with what it
     // has; anything slower keeps loading in the background.

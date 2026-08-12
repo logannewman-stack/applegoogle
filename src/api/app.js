@@ -192,13 +192,23 @@ export async function createApp(overrides = {}) {
 
       let { body, cacheStatus } = cachedSearch(q, page, perPage, !literal);
 
-      // Thin result set? Go and find more of the web, then answer from the
-      // enlarged index. The provider named URLs; the ranking below is ours.
+      // Thin OR weak result set? Go and read more of the web, then answer
+      // from the enlarged index. The provider named URLs; the ranking is ours.
+      // "Weak" matters as much as "few": a couple of barely-relevant local
+      // pages must not suppress the expansion an unfamiliar query needs.
+      // "Weak" is measured by how much of the question we actually answered,
+      // not by an absolute score — scores only mean something relative to a
+      // particular corpus, whereas term coverage is scale-free.
+      const top = body.results[0]?.why?.matched;
+      const coverage = top && top.of > 0 ? top.terms.length / top.of : 0;
+      const thin = body.total < config.discoveryMinResults || coverage < 0.6;
+      const askedFor = url.searchParams.get('deep') === '1';
+
       let expanded = null;
-      if (discovery.enabled && page === 1 && body.total < config.discoveryMinResults
-          && !discovery.isCoolingDown(q)) {
+      if (discovery.enabled && page === 1 && (thin || askedFor)
+          && (askedFor || !discovery.isCoolingDown(q))) {
         try {
-          const result = await discovery.expand(q);
+          const result = await discovery.expand(q, { force: askedFor });
           if (result.added > 0) {
             index.computeAuthority();
             indexStore.scheduleSave();
@@ -223,6 +233,8 @@ export async function createApp(overrides = {}) {
         cached: cacheStatus === 'hit',
         private: isPrivate,
         expanded,
+        // Tells the UI whether offering "look further" is worth it at all.
+        canLookFurther: discovery.enabled && !expanded,
         plan: actor.plan,
         usageToday: usage,
       }, headers);
