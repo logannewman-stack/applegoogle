@@ -159,7 +159,7 @@ Any ✗ comes with the exact command to fix it.
 npm start          # run it
 npm run doctor     # diagnose anything odd
 npm run bootstrap  # index more of the web
-npm test           # 92 tests, including the one that proves ranking can't be bought
+npm test           # 98 tests, including the one that proves ranking can't be bought
 ```
 
 Want a public URL other people can open? **[DEPLOY.md](DEPLOY.md)** puts it on
@@ -254,15 +254,25 @@ npm run seed
 
 ## Prefer not to run Docker?
 
-Two alternatives, both fine:
+Three alternatives, all fine:
 
-**Wikipedia** — no key, no Docker, but encyclopedia articles only:
+**Public SearXNG instances** — whole web, no key, no Docker, no account. Any
+single public instance is a coin flip, so use several and let Northstar fall
+through them:
+```bash
+npm run find-searxng      # probes real instances, prints the ones that work
+npm run setup:web -- --provider=searxng --url="https://a.example,https://b.example"
+```
+
+**Wikipedia** — no key, no Docker, nothing to configure, but encyclopedia
+articles only:
 ```bash
 npm run setup:web -- --provider=wikipedia
 ```
 
 **Brave Search API** — hosted, whole-web, free tier; needs an account at
-[brave.com/search/api](https://brave.com/search/api/):
+[brave.com/search/api](https://brave.com/search/api/), and it asks for a card
+to activate:
 ```bash
 npm run setup:web -- --provider=brave --key=YOUR_KEY
 ```

@@ -32,7 +32,7 @@ standard-library Node.
 ```bash
 npm run seed     # load sample documents so search works immediately
 npm start        # http://127.0.0.1:3000
-npm test         # 92 tests, including the ranking-integrity test
+npm test         # 98 tests, including the ranking-integrity test
 ```
 
 Open http://127.0.0.1:3000 and search for *pour over coffee*, *closures*, or
@@ -249,7 +249,7 @@ so Node's fetch uses `HTTPS_PROXY`.
 | `src/api/` | HTTP app, accounts/keys, settings, history, sessions |
 | `public/index.html` | The Northstar web app (installable PWA) |
 | `ios/` | SwiftUI `WKWebView` shell for the App Store path |
-| `test/` | 92 tests, run with `npm test` |
+| `test/` | 98 tests, run with `npm test` |
 
 ## API
 

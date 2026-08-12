@@ -119,27 +119,51 @@ Out of the box the deployment searches **Wikipedia** — keyless, instant, and
 genuinely useful, but encyclopedia articles only. Two ways to widen it, both
 in **Project → Settings → Environment Variables**:
 
-**Option A — whole web, needs a free account** (recommended)
+**Option A — whole web, no account, no card** (recommended)
+
+SearXNG is open-source metasearch run by volunteers. There is no signup and
+nothing to pay. The catch is that any *single* public instance is unreliable —
+operators switch the JSON API off, rate limiters trip, hosts go down — so
+Northstar takes a **list** and tries them in order until one answers. A list of
+five is dependable even though no single member of it is.
+
+Find instances that actually work, from your own machine:
+
+```bash
+npm run find-searxng
+```
+
+It asks each one a real question, keeps the ones that answer, and prints a
+ready-to-paste line. Then add:
+
+| Name | Value |
+|---|---|
+| `SEARCH_PROVIDER` | `searxng` |
+| `SEARXNG_URL` | `https://a.example,https://b.example,https://c.example` |
+
+Comma-separated, no spaces needed.
+
+> **One honest caveat.** `find-searxng` probes from your laptop. Vercel calls
+> from a datacenter IP, and some instances block those even when they answer
+> you fine at home. If searches on the deployment come back thin while the same
+> list works locally, that is what happened — put more instances in the list,
+> or use Option B.
+
+**Option B — whole web, needs a free account**
 
 Get a key at [brave.com/search/api](https://brave.com/search/api/) (free tier,
-2,000 queries/month), then add:
+2,000 queries/month, but it asks for a card to activate), then add:
 
 | Name | Value |
 |---|---|
 | `SEARCH_PROVIDER` | `brave` |
 | `BRAVE_API_KEY` | *your key* |
 
-**Option B — whole web, no account, less reliable**
-
-Point at a public SearXNG instance from
-[searx.space](https://searx.space) that has the JSON API enabled:
-
-| Name | Value |
-|---|---|
-| `SEARCH_PROVIDER` | `searxng` |
-| `SEARXNG_URL` | `https://searx.example.org` |
-
-Public instances rate-limit strangers, so expect occasional empty expansions.
+**Either way, it never goes dark.** If the chosen provider cannot answer at
+all, Northstar falls back to Wikipedia rather than telling someone their
+question has no answer — and says so in the logs. Set
+`SEARCH_FALLBACK_PROVIDER` to an empty string if you would rather it failed
+loudly.
 
 **Redeploy after adding variables** — environment variables are read at boot,
 so existing instances won't see them. **Deployments → ⋯ → Redeploy**.

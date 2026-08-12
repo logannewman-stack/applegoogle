@@ -35,33 +35,65 @@ async function getJson(url, { headers = {}, timeoutMs = 8000, fetchImpl = fetch 
 //
 // Self-hosting is the better answer: no shared rate limits, nobody else
 // seeing your queries, and the JSON format is guaranteed to be enabled.
+// SEARXNG_URL takes a comma-separated list, not just one address. Any single
+// public instance is unreliable — the JSON API gets switched off, the rate
+// limiter trips, the host goes down for a weekend — but the pool as a whole is
+// dependable. Northstar tries them in order and stops at the first that
+// answers, so a list of five is a keyless whole-web search that stays up.
+export function searxngInstances(config = {}) {
+  return String(config.searxngUrl || 'http://localhost:8888')
+    .split(',')
+    .map((u) => u.trim().replace(/\/+$/, ''))
+    .filter(Boolean);
+}
+
+// Whichever instance answered last is tried first next time, so a dead one at
+// the head of the list is not re-paid for on every single search.
+let lastGoodInstance = null;
+
 export const searxng = {
   id: 'searxng',
   needsKey: false,
   label: 'SearXNG (open metasearch, no key)',
-  async discover(query, { limit = 8, config = {}, fetchImpl = fetch } = {}) {
-    const base = (config.searxngUrl || 'http://localhost:8888').replace(/\/+$/, '');
-    const api = `${base}/search?q=${encodeURIComponent(query)}&format=json&language=en&safesearch=0`;
-    let data;
-    try {
-      data = await getJson(api, { fetchImpl, timeoutMs: config.crawlTimeoutMs || 10000 });
-    } catch (err) {
-      // The commonest failure by far: an instance that serves HTML but has
-      // the JSON format switched off. Say so, and say what to do about it.
-      if (err.status === 403 || err.status === 404) {
-        throw Object.assign(
-          new Error(`That SearXNG instance (${base}) will not return JSON. Most public instances disable it. Run your own instead:\n`
-            + `  docker run -d --name searxng -p 8888:8080 -e SEARXNG_SETTINGS__SEARCH__FORMATS='["html","json"]' searxng/searxng\n`
-            + '  then: SEARXNG_URL=http://localhost:8888'),
-          { status: 502, code: 'searxng_json_disabled' },
-        );
+  async discover(query, { limit = 8, config = {}, fetchImpl = fetch, log = () => {} } = {}) {
+    const all = searxngInstances(config);
+    // Put the last known-good instance first without dropping the others.
+    const ordered = lastGoodInstance && all.includes(lastGoodInstance)
+      ? [lastGoodInstance, ...all.filter((u) => u !== lastGoodInstance)]
+      : all;
+
+    const failures = [];
+    for (const base of ordered) {
+      const api = `${base}/search?q=${encodeURIComponent(query)}&format=json&language=en&safesearch=0`;
+      try {
+        const data = await getJson(api, { fetchImpl, timeoutMs: config.crawlTimeoutMs || 10000 });
+        const urls = (data?.results || []).map((r) => r.url).filter(Boolean).slice(0, limit);
+        // A 200 with nothing in it is a rate limiter being polite about
+        // refusing. Treat it as a failure and try the next instance.
+        if (urls.length === 0) {
+          failures.push(`${base}: answered with no results`);
+          continue;
+        }
+        lastGoodInstance = base;
+        if (ordered.length > 1) log(`searxng: ${base} answered with ${urls.length} URL(s)`);
+        return urls;
+      } catch (err) {
+        // The commonest failure by far: an instance that serves HTML but has
+        // the JSON format switched off.
+        failures.push(`${base}: ${err.status === 403 || err.status === 404 ? 'JSON API disabled' : err.message}`);
       }
-      throw Object.assign(
-        new Error(`Could not reach SearXNG at ${base}: ${err.message}. Is it running?`),
-        { status: 502, code: 'searxng_unreachable' },
-      );
     }
-    return (data?.results || []).map((r) => r.url).filter(Boolean).slice(0, limit);
+
+    throw Object.assign(
+      new Error(
+        `No SearXNG instance answered (tried ${ordered.length}).\n  `
+        + failures.join('\n  ')
+        + '\n\nFind instances that work: npm run find-searxng'
+        + '\nOr run your own, which never rate-limits you:'
+        + "\n  docker run -d --name searxng -p 8888:8080 -e SEARXNG_SETTINGS__SEARCH__FORMATS='[\"html\",\"json\"]' searxng/searxng",
+      ),
+      { status: 502, code: 'searxng_unreachable' },
+    );
   },
 };
 

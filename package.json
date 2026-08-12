@@ -15,7 +15,8 @@
     "bootstrap": "node scripts/bootstrap.js",
     "crawl": "node scripts/crawl.js",
     "create-user": "node scripts/create-user.js",
-    "test": "node --test"
+    "test": "node --test",
+    "find-searxng": "node scripts/find-searxng.js"
   },
   "dependencies": {},
   "devDependencies": {}

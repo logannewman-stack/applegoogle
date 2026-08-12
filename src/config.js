@@ -77,6 +77,11 @@ export function makeConfig(overrides = {}) {
     // container on your own machine, and a serverless function has no
     // neighbour to talk to. There, fall back to the keyless hosted option.
     searchProvider: env.SEARCH_PROVIDER || (ephemeral ? 'wikipedia' : 'searxng'),
+    // Used only when the chosen provider cannot answer at all. Keyless
+    // discovery leans on machines nobody promised you; a narrower source that
+    // always works beats telling someone their question has no answer. Set to
+    // an empty string to fail loudly instead.
+    searchFallbackProvider: env.SEARCH_FALLBACK_PROVIDER ?? 'wikipedia',
     searxngUrl: env.SEARXNG_URL || 'http://localhost:8888',
     searchApiKey: env.BRAVE_API_KEY || env.GOOGLE_API_KEY || env.BING_API_KEY || env.SEARCH_API_KEY || null,
     searchEngineId: env.GOOGLE_CSE_ID || null,

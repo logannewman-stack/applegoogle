@@ -12,7 +12,7 @@
 
 import { Crawler } from '../crawler/crawler.js';
 import { normalizeUrl } from '../core/index.js';
-import { getProvider } from './providers.js';
+import { getProvider, PROVIDERS } from './providers.js';
 
 export class Discovery {
   constructor(index, config, { fetchImpl = fetch, log = () => {} } = {}) {
@@ -63,22 +63,53 @@ export class Discovery {
   }
 
   async _expand(query, limit) {
-    const provider = getProvider(this.config);
+    const primary = getProvider(this.config);
     const started = Date.now();
 
+    // A keyless setup depends on machines nobody promised you. When the
+    // chosen provider cannot answer, a narrower one that always works beats
+    // no answer at all — the user asked a question either way. The fallback
+    // only ever supplies addresses, exactly like the primary, so nothing about
+    // the ranking changes with it.
+    const fallback = this.config.searchFallbackProvider
+      && this.config.searchFallbackProvider !== primary.id
+      ? PROVIDERS[this.config.searchFallbackProvider]
+      : null;
+
+    let provider = primary;
     let candidates = [];
+    let fellBackFrom = null;
     try {
-      candidates = await provider.discover(query, {
+      candidates = await primary.discover(query, {
         limit,
         config: this.config,
         fetchImpl: this.fetchImpl,
+        log: this.log,
       });
     } catch (err) {
-      this.log(`discovery: ${provider.id} failed — ${err.message}`);
-      throw Object.assign(new Error(`Could not reach ${provider.label}: ${err.message}`), {
-        status: 502,
-        code: 'provider_unreachable',
-      });
+      this.log(`discovery: ${primary.id} failed — ${err.message}`);
+      if (!fallback) {
+        throw Object.assign(new Error(`Could not reach ${primary.label}: ${err.message}`), {
+          status: 502,
+          code: 'provider_unreachable',
+        });
+      }
+      this.log(`discovery: falling back to ${fallback.id}`);
+      try {
+        candidates = await fallback.discover(query, {
+          limit,
+          config: this.config,
+          fetchImpl: this.fetchImpl,
+          log: this.log,
+        });
+        provider = fallback;
+        fellBackFrom = primary.id;
+      } catch (fallbackErr) {
+        throw Object.assign(
+          new Error(`Could not reach ${primary.label} (${err.message}) or ${fallback.label} (${fallbackErr.message}).`),
+          { status: 502, code: 'provider_unreachable' },
+        );
+      }
     }
 
     // Skip anything already indexed; discovery is for what we do not have.
@@ -91,7 +122,7 @@ export class Discovery {
     }
 
     if (fresh.length === 0) {
-      return { added: 0, considered: candidates.length, provider: provider.id, tookMs: Date.now() - started };
+      return { added: 0, considered: candidates.length, provider: provider.id, fellBackFrom, tookMs: Date.now() - started };
     }
 
     // Fetch and index them ourselves — same politeness rules as any crawl,
@@ -135,6 +166,7 @@ export class Discovery {
       errors: stats.errors,
       deferred: stats.remaining.length,
       provider: provider.id,
+      fellBackFrom,
       tookMs: Date.now() - started,
     };
   }

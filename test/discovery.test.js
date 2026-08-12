@@ -244,8 +244,12 @@ test('a SearXNG instance with JSON disabled explains how to fix it', async () =>
   const { searxng } = await import('../src/websearch/providers.js');
   const forbidden = async () => ({ ok: false, status: 403, json: async () => ({}) });
   await assert.rejects(
-    () => searxng.discover('x', { config: makeConfig(), fetchImpl: forbidden }),
-    (err) => err.code === 'searxng_json_disabled' && /docker run/.test(err.message),
+    () => searxng.discover('x', { config: makeConfig({ searxngUrl: 'https://nope.example' }), fetchImpl: forbidden }),
+    // The diagnosis names the instance and its particular failure, then the
+    // way out — running your own is the answer that never rate-limits you.
+    (err) => err.code === 'searxng_unreachable'
+      && /nope\.example: JSON API disabled/.test(err.message)
+      && /docker run/.test(err.message),
   );
 });
 
