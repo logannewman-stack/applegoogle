@@ -13,6 +13,7 @@
 // The full signal list is public API (GET /v1/ranking).
 
 import { tokenize, contentTerms } from './tokenizer.js';
+import { parseQuery, hasPhrase, correctQuery } from './query.js';
 
 // Published transparency manifest — served verbatim by GET /v1/ranking.
 export const RANKING_SIGNALS = [
@@ -91,10 +92,11 @@ function freshnessFactor(fetchedAt, now) {
 // Core scoring: returns { queryTokens, scored, details } where scored is
 // [{id, score, matched}] best-first and details holds per-doc signal data
 // used to build explanations.
-export function scoreDocuments(index, query, { now = Date.now() } = {}) {
+export function scoreDocuments(index, query, { now = Date.now(), parsed = null } = {}) {
   const data = index.data;
-  const queryTokens = tokenize(query);
-  if (queryTokens.length === 0) return { queryTokens, scored: [], details: new Map() };
+  const q = parsed || parseQuery(query);
+  const queryTokens = q.terms;
+  if (queryTokens.length === 0) return { queryTokens, scored: [], details: new Map(), parsed: q };
 
   const uniqueTerms = [...new Set(queryTokens)];
   const required = contentTerms(uniqueTerms);
@@ -123,6 +125,25 @@ export function scoreDocuments(index, query, { now = Date.now() } = {}) {
         candidates.set(docId, set);
       }
       set.add(term);
+    }
+  }
+
+  // Operators narrow the field before anything is scored. They can only ever
+  // remove pages — none of them can promote one.
+  if (q.site) {
+    for (const docId of [...candidates.keys()]) {
+      const host = data.docs[docId].domain;
+      if (host !== q.site && !host.endsWith(`.${q.site}`)) candidates.delete(docId);
+    }
+  }
+  for (const ex of q.excluded) {
+    const posting = data.postings[ex.token];
+    if (!posting) continue;
+    for (const docId in posting.docs) candidates.delete(docId);
+  }
+  for (const phrase of q.phrases) {
+    for (const docId of [...candidates.keys()]) {
+      if (!hasPhrase(postingsByTerm, docId, phrase.tokens)) candidates.delete(docId);
     }
   }
 
@@ -170,7 +191,7 @@ export function scoreDocuments(index, query, { now = Date.now() } = {}) {
   }
 
   scored.sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));
-  return { queryTokens, scored, details, required };
+  return { queryTokens, scored, details, required, parsed: q };
 }
 
 const listJoin = (items) =>
@@ -194,7 +215,7 @@ function freshnessReason(fetchedAt, now) {
 // item naming one concrete thing this page did to earn its place. `summary`
 // keeps the one-sentence form for API consumers.
 function buildWhy(doc, detail, queryInfo, now) {
-  const { surfaceByStem, orderedSurfaces, required } = queryInfo;
+  const { surfaceByStem, orderedSurfaces, required, parsed } = queryInfo;
   const quote = (stem) => `“${surfaceByStem.get(stem) || stem}”`;
 
   const matchedRequired = [...new Set(detail.requiredMatched)];
@@ -238,8 +259,25 @@ function buildWhy(doc, detail, queryInfo, now) {
     });
   }
 
+  // Operators the page had to satisfy to still be here at all.
+  for (const phrase of parsed?.phrases || []) {
+    reasons.push({
+      signal: 'operator',
+      text: `You asked for the exact phrase “${phrase.surface}”, and this page contains it.`,
+    });
+  }
+  if (parsed?.site) {
+    reasons.push({ signal: 'operator', text: `You limited the search to ${parsed.site}, and this page is from there.` });
+  }
+  if (parsed?.excluded?.length) {
+    reasons.push({
+      signal: 'operator',
+      text: `You ruled out ${listJoin(parsed.excluded.map((e) => `“${e.surface}”`))}, and this page has none of it.`,
+    });
+  }
+
   let phraseText = null;
-  if (detail.firstPair !== null) {
+  if (detail.firstPair !== null && !(parsed?.phrases || []).length) {
     phraseText = `${orderedSurfaces[detail.firstPair]} ${orderedSurfaces[detail.firstPair + 1]}`;
     reasons.push({
       signal: 'phrase_proximity',
@@ -322,17 +360,30 @@ export function makeSnippet(text, queryTokens, maxLen = 220) {
 }
 
 // Full search pipeline: score, diversify, paginate, snippet, explain.
-export function search(index, query, { page = 1, perPage = 10, now = Date.now() } = {}) {
+export function search(index, query, { page = 1, perPage = 10, now = Date.now(), allowCorrection = true } = {}) {
   const started = performance.now();
-  const { queryTokens, scored, details, required = [] } = scoreDocuments(index, query, { now });
+  let parsed = parseQuery(query);
+  let correction = null;
+
+  // A term the index has never seen is usually a typo. Search what they
+  // almost certainly meant, and say so — with the literal search one tap away.
+  if (allowCorrection) {
+    const fix = correctQuery(index, parsed);
+    if (fix) {
+      correction = fix;
+      parsed = parseQuery(fix.query);
+    }
+  }
+
+  const { queryTokens, scored, details, required = [] } = scoreDocuments(index, query, { now, parsed });
 
   // Query surfaces for human-readable explanations.
-  const pairs = tokenize(query, { surfaces: true });
+  const pairs = tokenize(parsed.raw, { surfaces: true });
   const surfaceByStem = new Map();
   for (const { token, surface } of pairs) {
     if (!surfaceByStem.has(token)) surfaceByStem.set(token, surface);
   }
-  const queryInfo = { surfaceByStem, orderedSurfaces: pairs.map((p) => p.surface), required };
+  const queryInfo = { surfaceByStem, orderedSurfaces: pairs.map((p) => p.surface), required, parsed };
 
   // Domain diversity: one site should not own a whole results page.
   const perDomain = new Map();
@@ -375,7 +426,14 @@ export function search(index, query, { page = 1, perPage = 10, now = Date.now() 
     total,
     page,
     perPage,
+    totalPages: Math.max(1, Math.ceil(total / perPage)),
     tookMs: Number((performance.now() - started).toFixed(2)),
+    correction,
+    operators: parsed.hasOperators ? {
+      phrases: parsed.phrases.map((p) => p.surface),
+      excluded: parsed.excluded.map((e) => e.surface),
+      site: parsed.site,
+    } : null,
     results,
   };
 }

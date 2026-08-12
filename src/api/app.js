@@ -114,15 +114,15 @@ export async function createApp(overrides = {}) {
   // Result cache: repeated queries answer from memory. Keys embed the index's
   // updatedAt stamp, so any index change invalidates the whole cache at once.
   const queryCache = new Map();
-  function cachedSearch(q, page, perPage) {
-    const key = `${index.data.updatedAt}|${page}|${perPage}|${q}`;
+  function cachedSearch(q, page, perPage, allowCorrection = true) {
+    const key = `${index.data.updatedAt}|${page}|${perPage}|${allowCorrection ? 'c' : 'l'}|${q}`;
     if (queryCache.has(key)) {
       const hit = queryCache.get(key);
       queryCache.delete(key);
       queryCache.set(key, hit); // LRU refresh
       return { body: hit, cacheStatus: 'hit' };
     }
-    const body = search(index, q, { page, perPage });
+    const body = search(index, q, { page, perPage, allowCorrection });
     queryCache.set(key, body);
     if (queryCache.size > QUERY_CACHE_MAX) {
       queryCache.delete(queryCache.keys().next().value);
@@ -178,10 +178,13 @@ export async function createApp(overrides = {}) {
       // settings say history should never be kept. The server enforces it.
       const isPrivate = url.searchParams.get('private') === '1' || !settings.saveHistory;
 
+      // literal=1 turns off spelling correction: "no, I meant exactly this".
+      const literal = url.searchParams.get('literal') === '1';
+
       const usage = chargeSearch(usageStore.data, actor);
       usageStore.scheduleSave();
 
-      const { body, cacheStatus } = cachedSearch(q, page, perPage);
+      const { body, cacheStatus } = cachedSearch(q, page, perPage, !literal);
 
       if (!isPrivate && !crossSite) {
         recordSearch(historyStore.data, historyOwner(actor, session), q, body.total);

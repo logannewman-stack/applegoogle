@@ -1,0 +1,266 @@
+[
+  {
+    "url": "https://code.example.net/js/promises",
+    "title": "Promises, Then Async/Await",
+    "description": "How promises actually work, and why async/await is the same thing wearing better clothes.",
+    "text": "A promise is an object representing a value you do not have yet. It sits in one of three states: pending, fulfilled, or rejected, and once it settles it never changes again. That immutability is the whole point — a settled promise is a fact. Chaining with then returns a new promise, which is why you can flatten nested callbacks into a line. Async and await are syntax over exactly this machinery: an async function always returns a promise, and await pauses the function, not the thread, until the promise settles. Errors travel the chain until something catches them, so one try/catch around several awaits is usually clearer than a catch per call. The rule that saves the most debugging time is simple: never forget to return the inner promise, or your chain resolves before the work is done.",
+    "lang": "en",
+    "links": ["https://code.example.net/js/event-loop", "https://code.example.net/js/closures"]
+  },
+  {
+    "url": "https://code.example.net/js/memory-leaks",
+    "title": "Finding Memory Leaks in JavaScript",
+    "description": "Detached DOM nodes, forgotten listeners, and closures that hold more than you think.",
+    "text": "JavaScript is garbage collected, which fools people into believing leaks are impossible. A leak here means keeping a reference to something you no longer need. The classic causes are few: event listeners added and never removed, timers that outlive the thing they update, detached DOM nodes still referenced by an array, and closures that capture a large object because they mention one field of it. Find them by taking two heap snapshots with the work in between and comparing retained size. Look for detached elements first; they are the most common and the easiest to fix. A useful habit is to write the cleanup as you write the setup, so every addEventListener has its removeEventListener in the same breath.",
+    "lang": "en",
+    "links": ["https://code.example.net/js/closures", "https://code.example.net/js/event-loop"]
+  },
+  {
+    "url": "https://code.example.net/js/debugging-mindset",
+    "title": "The Debugging Mindset",
+    "description": "Debugging is not guessing faster. It is narrowing the space where the bug can be.",
+    "text": "Most slow debugging comes from changing things before understanding them. The faster loop is to form one falsifiable belief at a time and test it: the data is wrong before this line, or it is not. Print at the boundary rather than everywhere. Bisect the input as readily as the code — half the data, half the commits, half the config. Reproduce reliably before you attempt a fix, because a bug you cannot summon is a bug you cannot confirm you fixed. And when you find it, ask what made it possible, not only what made it happen; the second question is where the durable fix lives.",
+    "lang": "en",
+    "links": ["https://code.example.net/js/memory-leaks"]
+  },
+  {
+    "url": "https://code.example.net/js/regular-expressions",
+    "title": "Regular Expressions Without Fear",
+    "description": "A practical subset of regex that covers almost everything, and the traps in the rest.",
+    "text": "You can go a long way with a small subset: character classes, quantifiers, anchors, groups, and alternation. Anchor your pattern unless you truly want a substring match, because an unanchored pattern is a much weaker claim than people intend. Prefer explicit character classes over the dot, which matches more than you expect. Beware catastrophic backtracking: nested quantifiers over overlapping patterns can turn a short string into seconds of work, which is a denial of service waiting to happen in a web handler. When a pattern grows past a line, that is usually the signal to parse instead of match.",
+    "lang": "en",
+    "links": []
+  },
+  {
+    "url": "https://code.example.net/js/testing-what-matters",
+    "title": "Testing What Actually Matters",
+    "description": "Test the promise your code makes, not the way it happens to keep it.",
+    "text": "A test that asserts on internals breaks every time you refactor and passes every time the behavior quietly rots. Write tests against the contract instead: given this input and this state, the observable output is that. The best tests read like documentation of the promise. Coverage is a smoke detector, not a goal; a hundred percent of trivial lines proves less than one test of the hard case. Invest in the tests that pin the thing that would be catastrophic to get wrong, and let the rest be thin.",
+    "lang": "en",
+    "links": ["https://code.example.net/js/debugging-mindset"]
+  },
+  {
+    "url": "https://brew.example.org/guides/grind-size",
+    "title": "Grind Size Is the Dial That Matters",
+    "description": "Why grind size changes a cup more than any other variable you can adjust.",
+    "text": "Every brewing variable matters, but grind size moves the cup furthest for the least effort. Grinding finer exposes more surface area, so extraction runs faster and further; grinding coarser slows it down. That single dial explains most bad coffee. Sour, thin, sharp cups are under-extracted and want a finer grind. Bitter, drying, hollow cups are over-extracted and want a coarser one. Change one variable at a time or you will learn nothing. A burr grinder matters more than an expensive brewer, because blades produce a mixture of dust and boulders that over-extracts and under-extracts in the same cup.",
+    "lang": "en",
+    "links": ["https://brew.example.org/guides/pour-over", "https://brew.example.org/guides/espresso"]
+  },
+  {
+    "url": "https://brew.example.org/guides/water",
+    "title": "Water Is Most of Your Coffee",
+    "description": "Coffee is 98% water. Its mineral content decides what the coffee tastes like.",
+    "text": "A brewed cup is almost entirely water, so water chemistry is not a detail. Minerals, mostly magnesium and calcium, bind to flavour compounds and carry them into solution; distilled water makes famously flat, hollow coffee because it has nothing to do the carrying. Too much hardness goes the other way, muting acidity and scaling your machine. Filtered tap water in the middle range suits most brewing. If your coffee tastes dull everywhere, no matter the beans or the grind, suspect the water before you suspect yourself.",
+    "lang": "en",
+    "links": ["https://brew.example.org/guides/pour-over", "https://brew.example.org/guides/grind-size"]
+  },
+  {
+    "url": "https://brew.example.org/guides/cold-brew",
+    "title": "Cold Brew, Slowly",
+    "description": "Time replaces heat: a long, gentle steep that makes a sweeter, lower-acid concentrate.",
+    "text": "Cold brew is extraction by patience. Without heat, the compounds that dissolve fastest — many of the bright acids and some bitterness — never fully come out, which is why the result tastes rounder and sweeter than the same beans brewed hot. Use a coarse grind and a ratio near one to five for a concentrate, steep twelve to eighteen hours at room temperature or in the fridge, then filter well. It keeps about a week refrigerated. Because it is a concentrate, dilute to taste; drinking it neat is a mistake you only make once.",
+    "lang": "en",
+    "links": ["https://brew.example.org/guides/grind-size"]
+  },
+  {
+    "url": "https://brew.example.org/beans/storage",
+    "title": "How to Store Coffee Beans",
+    "description": "Air, light, heat, and moisture are the four enemies. The freezer is more useful than you were told.",
+    "text": "Roasted coffee goes stale by oxidation, so the useful rules follow from keeping oxygen away: an airtight opaque container, at stable room temperature, away from the stove. Do not store beans in the fridge, where they absorb odours and cycle through condensation every time the door opens. The freezer, however, works well for beans you will not drink within two weeks, provided you freeze them in small sealed portions and never refreeze a thawed one. Grind immediately before brewing; ground coffee stales in hours what whole beans take weeks to lose.",
+    "lang": "en",
+    "links": ["https://brew.example.org/beans/light-roast"]
+  },
+  {
+    "url": "https://kitchen.example.net/bread-hydration",
+    "title": "Hydration, and Why Wet Dough Scares You",
+    "description": "What baker's percentage means, and how hydration changes the crumb.",
+    "text": "Hydration is the weight of water as a percentage of the weight of flour. A sixty-five percent dough is firm and easy to shape; an eighty-five percent dough is slack, sticky, and produces the open irregular crumb people photograph. Higher hydration means more steam in the oven, which means more oven spring and a lighter interior. It also means dough that spreads if the gluten is not developed enough to hold it. The way through is not less water but more strength: longer autolyse, a few rounds of stretch and fold, and wet hands instead of extra flour, which would change the very number you are trying to hit.",
+    "lang": "en",
+    "links": ["https://kitchen.example.net/sourdough-starter", "https://kitchen.example.net/knife-skills"]
+  },
+  {
+    "url": "https://kitchen.example.net/knife-skills",
+    "title": "The Only Knife Skills You Need",
+    "description": "A sharp knife, a claw grip, and the patience to cut evenly.",
+    "text": "Almost all home cooking improves with three habits. Keep the knife sharp, because a dull blade slides and slides are how people cut themselves. Curl your fingertips under and let the flat of the blade ride your knuckles, so the knife physically cannot reach what it should not. Cut to an even size, because evenness is what makes things cook at the same rate; the difference between a good and a bad stir fry is usually not seasoning but geometry. Everything else — the rock chop, the julienne, the fine brunoise — is speed and elegance layered on top of those three.",
+    "lang": "en",
+    "links": []
+  },
+  {
+    "url": "https://kitchen.example.net/salt-timing",
+    "title": "When to Salt, and Why It Changes Everything",
+    "description": "Salting early is not the same as salting more.",
+    "text": "Salt does two different jobs depending on when it arrives. Added early, it has time to diffuse inward, dissolve proteins, and season the food rather than the surface; on meat it also draws out moisture that then reabsorbs as a concentrated brine. Added at the end, it sits on the outside and hits the tongue directly, which is why a finishing flake tastes saltier than the same weight stirred in an hour earlier. Neither is wrong. Season in layers and taste as you go, and remember you can always add salt but you cannot take it back.",
+    "lang": "en",
+    "links": ["https://kitchen.example.net/knife-skills"]
+  },
+  {
+    "url": "https://kitchen.example.net/stock-from-scraps",
+    "title": "Stock From What You Were Going to Throw Away",
+    "description": "A freezer bag of scraps becomes the thing that makes everything else taste better.",
+    "text": "Keep a bag in the freezer and add onion ends, carrot tops, celery bases, mushroom stems, parmesan rinds, and the bones of any roast. When it is full, cover with cold water, bring it barely to a simmer, and hold it there for a few hours; a rolling boil emulsifies fat and makes stock cloudy and greasy. Skip anything from the cabbage family, which turns sulfurous, and go easy on starchy peels. Salt at the end, or not at all, so the stock stays a base rather than a finished thing. What you get for free will improve every soup, braise, and grain you cook for months.",
+    "lang": "en",
+    "links": ["https://kitchen.example.net/salt-timing"]
+  },
+  {
+    "url": "https://trail.example.org/hikes/altitude-sickness",
+    "title": "Altitude Sickness: Signs and What to Do",
+    "description": "Headache, nausea, and confusion are not something to push through. The cure is going down.",
+    "text": "Acute mountain sickness begins with a headache that does not respond to water or rest, usually joined by nausea, poor appetite, dizziness, and broken sleep. It is caused by ascending faster than the body can adjust, not by weakness or poor fitness. The reliable prevention is pace: climb high, sleep low, and add rest days as you gain elevation. The reliable treatment is descent, and it works quickly. Confusion, an unsteady walk, or breathlessness at rest are different and far more serious; they mean going down immediately, at night if necessary. No summit is worth a brain or lung emergency at eleven thousand feet.",
+    "lang": "en",
+    "links": ["https://trail.example.org/hikes/first-fourteener", "https://trail.example.org/gear/layering"]
+  },
+  {
+    "url": "https://trail.example.org/gear/layering",
+    "title": "Layering, Explained by What Each Layer Does",
+    "description": "Base moves sweat, mid holds warmth, shell blocks weather. Cotton does none of it.",
+    "text": "Each layer has exactly one job. The base layer moves sweat off your skin, which is why wool or synthetic works and cotton fails: wet cotton holds water against you and pulls heat away fast enough to be dangerous. The mid layer traps air, and it is the air rather than the fabric that keeps you warm, so loft matters more than thickness. The shell blocks wind and rain without trapping so much moisture that you soak yourself from the inside. Manage layers before you need to, not after — take one off as you start climbing and put it back on the moment you stop.",
+    "lang": "en",
+    "links": ["https://trail.example.org/hikes/altitude-sickness"]
+  },
+  {
+    "url": "https://trail.example.org/skills/navigation-basics",
+    "title": "Navigating Without a Signal",
+    "description": "Map, compass, and the habit of knowing where you are before you are lost.",
+    "text": "Navigation is mostly a habit rather than a rescue skill. Look at the map before you set off, note the shape of the terrain, and check your position at every obvious feature so the gap between known positions never grows large. A compass is for when visibility closes in: take a bearing from the map, add the local declination, and walk it, counting paces if the ground is featureless. If you become unsure, stop. The instinct to press on turns a small doubt into a long night. Going back to the last place you were certain about is almost always faster than improvising forward.",
+    "lang": "en",
+    "links": ["https://trail.example.org/gear/layering", "https://sky.example.org/navigating-by-stars"]
+  },
+  {
+    "url": "https://sky.example.org/navigating-by-stars",
+    "title": "How Sailors Navigated by the Stars",
+    "description": "Polaris sits nearly still while everything turns around it, which makes it a fixed reference for latitude.",
+    "text": "Because Earth's axis points almost exactly at Polaris, that one star barely moves through the night while the rest of the sky wheels around it. Two consequences made ocean navigation possible. First, Polaris always marks true north closely enough to steer by. Second, the angle between Polaris and the horizon is your latitude — measure it with a sextant and you know how far north you are without any instrument on shore. Longitude was the harder half of the problem and waited on accurate clocks. For most of history, anyone who was lost looked up, and the sky answered without asking for anything.",
+    "lang": "en",
+    "links": ["https://sky.example.org/finding-polaris", "https://trail.example.org/skills/navigation-basics"]
+  },
+  {
+    "url": "https://sky.example.org/finding-polaris",
+    "title": "Finding Polaris Tonight",
+    "description": "Follow the two pointer stars at the end of the Big Dipper's bowl, five lengths on.",
+    "text": "Find the Big Dipper, then the two stars forming the outer edge of its bowl. Draw a line through them and continue about five times the distance between them; the moderately bright star you land on is Polaris, the tip of the Little Dipper's handle. It is not a brilliant star, which surprises people, and it never rises or sets from northern latitudes. Its height above the horizon equals your latitude, so it looks low from Florida and high from Alaska. Once you have found it a few times you will find it instantly, and you will never be truly disoriented under a clear sky again.",
+    "lang": "en",
+    "links": ["https://sky.example.org/navigating-by-stars", "https://sky.example.org/light-pollution"]
+  },
+  {
+    "url": "https://sky.example.org/light-pollution",
+    "title": "What We Lost to Light Pollution",
+    "description": "Most people alive today have never seen the Milky Way from where they live.",
+    "text": "A sky that once showed thousands of stars now shows a few dozen over most cities, because scattered artificial light washes out everything fainter than the glow. The loss is cultural as much as astronomical: the Milky Way was a common sight for every generation before ours and is now something people travel to see. It is also unusually reversible. Unlike most pollution, light stops the moment the fixture is shielded or switched off, and towns that adopt full-cutoff fixtures get their sky back within a single night while using less electricity.",
+    "lang": "en",
+    "links": ["https://sky.example.org/finding-polaris"]
+  },
+  {
+    "url": "https://sky.example.org/why-stars-twinkle",
+    "title": "Why Stars Twinkle and Planets Do Not",
+    "description": "Turbulent air bends starlight. A planet is wide enough to average the bending out.",
+    "text": "A star is so far away that it arrives as a single point of light, and pockets of air at different temperatures bend that point around as it passes through the atmosphere — the twinkle astronomers call seeing. A planet, though far smaller than a star, is close enough to appear as a tiny disc rather than a point. Different parts of that disc are bent in different directions at the same moment, and the wobbles average out, so planets shine with a steady light. That is a reliable way to tell them apart with the naked eye: if it twinkles it is a star, if it holds steady it is probably a planet.",
+    "lang": "en",
+    "links": ["https://sky.example.org/light-pollution"]
+  },
+  {
+    "url": "https://mind.example.org/why-we-are-curious",
+    "title": "Curiosity Is an Itch, Not a Virtue",
+    "description": "The information gap theory: curiosity spikes when we know just enough to notice what we do not.",
+    "text": "Curiosity does not rise with ignorance. It peaks in the middle, when you know enough about something to perceive the shape of what you are missing — the information gap. That is why a partial answer is more maddening than no answer, and why a good question can occupy someone for years. The feeling is closer to an itch than to a virtue: mildly unpleasant, specific, and relieved by exactly one thing. It follows that the fastest way to make someone curious is not to tell them more but to show them the edge of what they already half know.",
+    "lang": "en",
+    "links": ["https://mind.example.org/attention-is-finite", "https://mind.example.org/memory-and-forgetting"]
+  },
+  {
+    "url": "https://mind.example.org/attention-is-finite",
+    "title": "Attention Is Finite, and Someone Is Buying It",
+    "description": "When a product is free and endless, attention is the thing being sold.",
+    "text": "Attention behaves like a budget: what you spend on one thing is not available for another, and unlike money it cannot be saved. This is why an economy grew up around capturing it. Feeds optimised for engagement are not trying to be useful; they are trying to be difficult to leave, and those are different goals that occasionally overlap. The tell is whether a product tries to finish your task or extend your session. Tools that respect attention have endings — a result, an answer, a door out — and are content when you leave through it.",
+    "lang": "en",
+    "links": ["https://privacy.example.org/why-ad-free-matters", "https://mind.example.org/why-we-are-curious"]
+  },
+  {
+    "url": "https://mind.example.org/memory-and-forgetting",
+    "title": "Forgetting Is a Feature",
+    "description": "Memory is reconstruction, not playback, and forgetting is what keeps it useful.",
+    "text": "Remembering is not replaying a recording; it is rebuilding an episode from fragments, which is why memories change subtly each time they are recalled and why confident memories can be wrong. Forgetting is not the failure mode of this system but part of its design: a mind that retained everything would drown in irrelevant detail and generalise badly. What survives tends to be what was rehearsed, what was surprising, and what connected to something already known. The practical consequence is that spacing your review beats repeating it, and explaining something to someone else beats reading it again.",
+    "lang": "en",
+    "links": ["https://mind.example.org/why-we-are-curious"]
+  },
+  {
+    "url": "https://mind.example.org/decision-fatigue",
+    "title": "Decision Fatigue and the Case for Fewer Choices",
+    "description": "Every choice costs something, and the price is paid by the choices that come after.",
+    "text": "Making decisions depletes the capacity to make more of them well. As the day goes on, people default more, defer more, and pick the option that requires the least justification. This is why removing trivial decisions is not aesthetic minimalism but a practical tactic, and why good interfaces present one clear action rather than a field of equal options. It is also why a menu of twenty items sells fewer than a menu of six. Design that respects this does the deciding it can legitimately do on your behalf, and leaves you the decisions that are actually yours.",
+    "lang": "en",
+    "links": ["https://design.example.net/principles-of-minimalism", "https://mind.example.org/attention-is-finite"]
+  },
+  {
+    "url": "https://design.example.net/whitespace",
+    "title": "Whitespace Is Not Empty",
+    "description": "The space around an element is what tells you the element matters.",
+    "text": "Whitespace does the work of punctuation. Space groups things that belong together and separates things that do not, before a single label is read, which is why a well spaced page can be understood at a glance and a cramped one cannot be understood at all. It also signals confidence: giving an element room is a claim that it deserves the room. The most common mistake is treating space as leftover rather than as a designed quantity, so it gets squeezed the moment anything else needs to fit. Decide the spacing scale first and defend it, and most other decisions get easier.",
+    "lang": "en",
+    "links": ["https://design.example.net/principles-of-minimalism", "https://design.example.net/typography-basics"]
+  },
+  {
+    "url": "https://design.example.net/typography-basics",
+    "title": "Typography Basics That Fix Most Pages",
+    "description": "Measure, leading, contrast, and hierarchy — in that order.",
+    "text": "Four adjustments repair most text on the web. Set the measure: sixty to seventy five characters a line, because eyes lose the return path on anything longer. Set the leading in proportion to the measure, since longer lines need more space between them. Fix contrast so body text is genuinely readable rather than fashionably faint. Then build a hierarchy with size and weight, using as few steps as you can get away with; three levels confidently distinguished beat six that are nearly the same. Typeface choice matters far less than these four, and gets far more attention.",
+    "lang": "en",
+    "links": ["https://design.example.net/whitespace"]
+  },
+  {
+    "url": "https://design.example.net/dark-mode",
+    "title": "Dark Mode Done Properly",
+    "description": "Inverting the colours is not dark mode. Pure black and pure white are both mistakes.",
+    "text": "A dark interface is not a light one with the values flipped. Pure white text on pure black produces halation, where glyphs appear to bleed into the background, so slightly off shades in both directions read better and tire the eye less. Elevation inverts too: in light interfaces higher surfaces cast shadows, while in dark ones they get lighter, so shadow-based depth stops working. Saturated colours that looked calm on white can glow uncomfortably on black and usually need to be desaturated. The test is not whether it looks dark but whether it is as easy to read for as long.",
+    "lang": "en",
+    "links": ["https://design.example.net/typography-basics", "https://design.example.net/principles-of-minimalism"]
+  },
+  {
+    "url": "https://privacy.example.org/what-tracking-costs",
+    "title": "What Tracking Actually Costs You",
+    "description": "The price is not only privacy. It is speed, battery, and a web built around the wrong goal.",
+    "text": "Tracking is usually argued about as a privacy question, but the everyday costs are more mundane. Trackers are scripts, and scripts are weight: a typical publisher page spends more time executing them than rendering its own article, which is felt as a slow phone and a flat battery. There is a design cost too. When measurement rewards time on page rather than the answer being found, layouts drift toward interruption. And there is an accuracy cost: profiles assembled from browsing are confidently wrong often enough that the targeting they enable is worse than it claims to be, while the surveillance it requires is exactly as real as it sounds.",
+    "lang": "en",
+    "links": ["https://privacy.example.org/why-ad-free-matters", "https://mind.example.org/attention-is-finite"]
+  },
+  {
+    "url": "https://privacy.example.org/search-history-yours",
+    "title": "Your Search History Should Belong to You",
+    "description": "A record of what you asked is a record of what you feared, hoped, and did not know.",
+    "text": "Search queries are unusually revealing because people ask a search box things they would not ask a person. A history is therefore not neutral metadata; it is a diary written involuntarily. Two principles follow. It should exist because it is useful to the person who created it — finding your way back to something is a real need — and it should be deletable, completely and immediately, by that person alone. Anything else, including retaining it to improve a product, is asking someone to fund a service with the most intimate record they will ever generate.",
+    "lang": "en",
+    "links": ["https://privacy.example.org/what-tracking-costs", "https://privacy.example.org/why-ad-free-matters"]
+  },
+  {
+    "url": "https://ev.example.org/battery-health",
+    "title": "Keeping an EV Battery Healthy",
+    "description": "Charge to eighty, avoid the extremes, and stop worrying about the rest.",
+    "text": "Lithium batteries age faster at the ends of their range and at high temperature. The practical advice reduces to a few habits: charge daily to about eighty percent and save one hundred for the morning of a long drive, avoid sitting for weeks at either very high or very low charge, and prefer slower home charging for routine use since fast charging warms the pack. Modern packs are managed well enough that most degradation happens in the first year and then slows dramatically. Owners routinely worry about this far more than the data warrants, and worry far less than they should about tyre pressure, which costs them more range every day.",
+    "lang": "en",
+    "links": ["https://ev.example.org/charging-basics", "https://ev.example.org/road-trip-planning"]
+  },
+  {
+    "url": "https://ev.example.org/road-trip-planning",
+    "title": "Planning an EV Road Trip",
+    "description": "Plan around chargers, not around distance, and arrive low rather than leaving full.",
+    "text": "Electric road trips work differently from petrol ones. Charging is fastest at a low state of charge and slows sharply above about eighty percent, so several short stops beat two long ones and you want to arrive at a charger fairly empty. Plan the route by charger locations rather than by mileage, and always know your bail-out option if a stall is broken or occupied. Cold weather and high speed both cost range, sometimes by a third combined, so plan the worst leg for the worst conditions. In practice the stops line up with the ones you would take anyway, which is why owners stop noticing them after the first trip.",
+    "lang": "en",
+    "links": ["https://ev.example.org/charging-basics", "https://ev.example.org/battery-health"]
+  },
+  {
+    "url": "https://music.example.net/why-minor-keys-feel-sad",
+    "title": "Why Minor Keys Sound Sad",
+    "description": "Part physics, part culture, and the argument is older than you would guess.",
+    "text": "The honest answer is that both explanations are partly right. Physically, the minor third sits less neatly among the harmonics of a fundamental than the major third, so it carries slightly more roughness — measurable, but small. Culturally, listeners raised in Western music learn the association from a lifetime of hearing minor keys used for lament, and studies of listeners from other traditions find the effect much weaker. What is striking is how consistent the convention has become. Speech does something similar: falling pitch and narrow range read as sadness across languages, and minor melodies share both of those contours.",
+    "lang": "en",
+    "links": ["https://music.example.net/listening-closely"]
+  },
+  {
+    "url": "https://music.example.net/listening-closely",
+    "title": "How to Listen to Music Closely",
+    "description": "Pick one thread and follow it through the whole song. Then pick another.",
+    "text": "Most listening is passive, and passive listening hears the top line and the beat. Active listening means choosing one element and staying with it for an entire track: only the bass, then only the hi-hats, then only the space between phrases. Songs you have heard a hundred times reveal parts you have never noticed, because attention was never pointed there. Listen on a few different systems too, since a mix that seems bass heavy on headphones can vanish on a phone speaker. The skill transfers: once you can hold a thread in music, you hear arrangement everywhere.",
+    "lang": "en",
+    "links": ["https://music.example.net/why-minor-keys-feel-sad"]
+  }
+]

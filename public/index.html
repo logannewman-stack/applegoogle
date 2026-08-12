@@ -123,11 +123,26 @@
   }
   .box:focus-within { border-color: var(--ink); box-shadow: 0 0 0 4px color-mix(in srgb, var(--ink) 7%, transparent); }
   .box > svg { flex: none; opacity: .4; }
-  input[type="text"], input[type="email"] {
+  /* Scoped to the app's own fields — an unscoped input[type=…] rule
+     out-specifies the story's .sinput class and steals its styling. */
+  .box input, .srow input {
     flex: 1; border: none; outline: none; background: transparent; color: var(--ink);
     font: inherit; font-size: 1.05rem; min-width: 0;
+    -webkit-appearance: none; appearance: none; border-radius: 0;
   }
-  input::placeholder { color: var(--faint); }
+  .box input::placeholder, .srow input::placeholder { color: var(--faint); }
+  /* Autofill paints its own opaque background — clip it to the glyphs so the
+     field keeps the design's own surface, dark scenes included. */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  input:-webkit-autofill:active {
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: currentColor;
+    caret-color: currentColor;
+    transition: background-color 100000s ease-in-out 0s;
+  }
 
   .suggest {
     position: absolute; top: calc(100% + 6px); left: .75rem; right: .75rem; z-index: 10;
@@ -213,7 +228,38 @@
     color: var(--faint); font-size: .76rem;
   }
   .why .factors { margin-top: .3rem; color: var(--faint); font-size: .72rem; font-family: var(--mono); }
-  .empty { color: var(--faint); padding: var(--s7) 0; text-align: center; font-size: .95rem; }
+  .empty { color: var(--faint); padding: var(--s7) 0 var(--s5); text-align: center; font-size: .95rem; line-height: 1.7; }
+  .empty strong { color: var(--ink); font-weight: 600; }
+  .empty .tips { margin-top: var(--s4); display: flex; flex-direction: column; gap: .3rem; align-items: center; font-size: .84rem; }
+  .empty code {
+    font-family: var(--mono); font-size: .82em; background: var(--wash);
+    border: 1px solid var(--line); border-radius: 6px; padding: .1rem .35rem; color: var(--ink);
+  }
+
+  /* Correction + operator notices above the results */
+  .notice { font-size: .92rem; margin: var(--s4) 0 0; line-height: 1.6; }
+  .notice .q { font-weight: 600; }
+  .oplist { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: var(--s3); }
+  .optag {
+    font-size: .74rem; color: var(--faint); border: 1px solid var(--line);
+    border-radius: 999px; padding: .2rem .6rem;
+  }
+  .optag b { color: var(--ink); font-weight: 600; }
+
+  /* Pagination */
+  .pager {
+    display: flex; align-items: center; justify-content: space-between; gap: var(--s4);
+    margin: var(--s6) 0 var(--s4); padding-top: var(--s4); border-top: 1px solid var(--line);
+  }
+  .pager .where { color: var(--faint); font-size: .8rem; }
+  .pager .moves { display: flex; gap: var(--s2); }
+  .pager button {
+    border: 1px solid var(--line); background: none; border-radius: 999px;
+    padding: .4rem 1rem; font-size: .85rem; cursor: pointer;
+    display: inline-flex; align-items: center; gap: .35rem;
+  }
+  .pager button[disabled] { opacity: .35; cursor: default; }
+  @media (hover: hover) { .pager button:not([disabled]):hover { border-color: var(--ink); } }
 
   footer {
     width: min(660px, 92vw); padding: var(--s5) 0 calc(var(--s5) + env(safe-area-inset-bottom));
@@ -355,15 +401,31 @@
   .beat .interact { opacity: 0; transform: translateY(10px); width: 100%; display: flex; flex-direction: column; align-items: center; gap: var(--s3); }
   .beat.is-live .interact { animation: lineIn .8s var(--ease) .82s forwards; }
 
-  .sinput {
-    width: min(20rem, 74vw); border: none; border-bottom: 1px solid rgba(247,247,248,.4);
-    background: transparent; color: var(--star); text-align: center;
-    font-family: var(--serif); font-size: 1.6rem; /* ≥16px: never triggers iOS zoom */
-    padding: .4rem .2rem .5rem; outline: none;
-    transition: border-color .25s var(--ease-soft);
+  /* A line of light to write on — no box, nothing that reads as a form
+     control dropped onto the scene. */
+  input.sinput {
+    width: min(20rem, 74vw);
+    border: none; border-bottom: 1px solid rgba(247,247,248,.28);
+    background: transparent !important; color: var(--star); text-align: center;
+    font-family: var(--serif); font-weight: 500; letter-spacing: -.01em;
+    font-size: clamp(1.5rem, 5vw, 1.9rem); /* ≥16px: never triggers iOS zoom */
+    line-height: 1.3; padding: .35rem .2rem .55rem; outline: none;
+    caret-color: var(--star);
+    -webkit-appearance: none; appearance: none; border-radius: 0;
+    transition: border-color .3s var(--ease-soft);
   }
-  .sinput::placeholder { color: rgba(247,247,248,.3); font-family: var(--sans); font-size: 1rem; }
-  .sinput:focus { border-color: rgba(247,247,248,.8); }
+  .sinput::placeholder {
+    color: rgba(247,247,248,.34); font-family: var(--serif);
+    font-size: .78em; letter-spacing: 0;
+  }
+  .sinput:focus { border-color: rgba(247,247,248,.75); }
+  .sinput:-webkit-autofill,
+  .sinput:-webkit-autofill:hover,
+  .sinput:-webkit-autofill:focus {
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: var(--star); caret-color: var(--star);
+    box-shadow: none;
+  }
   .note { font-size: .76rem; color: rgba(247,247,248,.42); max-width: 24rem; line-height: 1.6; }
   .ok {
     font-size: .78rem; color: rgba(247,247,248,.75);
@@ -591,16 +653,16 @@
   const INTERESTS = ['How things work', 'Other worlds', 'Good food', 'Code',
                      'Wild places', 'Old stories', 'New music', 'The human mind'];
   const INTEREST_QUERIES = {
-    'How things work': ['how the javascript event loop works', 'how espresso extraction works'],
-    'Other worlds': ['ev charging on road trips', 'hiking a fourteener'],
-    'Good food': ['pour over coffee', 'sourdough starter'],
-    'Code': ['javascript closures', 'event loop microtasks'],
-    'Wild places': ['first fourteener', 'altitude sickness signs'],
-    'Old stories': ['why ad-free search matters', 'light roast coffee origins'],
-    'New music': ['principles of minimalist design', 'monochrome aesthetics'],
-    'The human mind': ['why minimalism builds trust', 'signs of altitude sickness'],
+    'How things work': ['why stars twinkle', 'how the javascript event loop works'],
+    'Other worlds': ['navigating by the stars', 'light pollution'],
+    'Good food': ['pour over coffee', 'sourdough starter', 'grind size'],
+    'Code': ['javascript closures', 'promises and async await', 'memory leaks'],
+    'Wild places': ['altitude sickness', 'layering for cold weather'],
+    'Old stories': ['how sailors navigated', 'finding polaris'],
+    'New music': ['why minor keys sound sad', 'how to listen closely'],
+    'The human mind': ['why we are curious', 'attention is finite', 'forgetting is a feature'],
   };
-  const DEFAULT_QUERIES = ['pour over coffee', 'javascript closures', 'why ad-free search matters', 'minimalist design'];
+  const DEFAULT_QUERIES = ['pour over coffee', 'javascript closures', 'navigating by the stars', 'why we are curious'];
 
   /* ═══ State ═════════════════════════════════════════════════ */
   const K = {
@@ -761,13 +823,36 @@
     if (data.private) bits.push('private — not saved');
     els.meta.textContent = bits.join('  ·  ');
 
+    // Correction + operator notices sit above whatever came back.
+    let head = '';
+    if (data.correction) {
+      head += `<div class="notice">Showing results for <span class="q">${esc(data.correction.query)}</span>.
+        <button class="linklike" data-literal="1">Search instead for ${esc(data.correction.from)}</button></div>`;
+    }
+    if (data.operators) {
+      const tags = [];
+      for (const p of data.operators.phrases) tags.push(`exact phrase <b>${esc(p)}</b>`);
+      if (data.operators.site) tags.push(`only <b>${esc(data.operators.site)}</b>`);
+      for (const x of data.operators.excluded) tags.push(`without <b>${esc(x)}</b>`);
+      head += `<div class="oplist">${tags.map((t) => `<span class="optag">${t}</span>`).join('')}</div>`;
+    }
+
     if (!data.results || !data.results.length) {
-      els.results.innerHTML = '<div class="empty">Nothing matched. The index may still be small — crawl more of the web.</div>';
+      els.results.innerHTML = head + `<div class="empty">
+        Nothing matched <strong>${esc(data.query)}</strong>.
+        <div class="tips">
+          <span>Try fewer words, or different ones.</span>
+          <span>Put a phrase in quotes to require it: <code>"pour over"</code></span>
+          <span>Rule a word out with a minus: <code>coffee -decaf</code></span>
+          <span>Stay on one site: <code>site:example.org</code></span>
+        </div>
+      </div>`;
+      wireResultActions(data);
       return;
     }
     const target = settings.openInNewTab ? ' target="_blank"' : '';
     const open = settings.autoExpandWhy;
-    els.results.innerHTML = data.results.map((r, i) => {
+    els.results.innerHTML = head + data.results.map((r, i) => {
       // Older cached payloads carry only `summary` — fall back to it rather
       // than rendering an empty panel.
       const reasons = (r.why?.reasons?.length ? r.why.reasons : (r.why?.summary ? [{ text: r.why.summary }] : []));
@@ -791,6 +876,22 @@
       </div>`;
     }).join('');
 
+    // Pagination — the API always supported pages; now you can reach them.
+    const totalPages = data.totalPages || 1;
+    if (totalPages > 1) {
+      const from = (data.page - 1) * data.perPage + 1;
+      const to = Math.min(data.total, data.page * data.perPage);
+      const pager = document.createElement('div');
+      pager.className = 'pager';
+      pager.innerHTML = `
+        <span class="where">${from}–${to} of ${data.total}  ·  page ${data.page} of ${totalPages}</span>
+        <span class="moves">
+          <button data-page="${data.page - 1}" ${data.page <= 1 ? 'disabled' : ''}>‹ Previous</button>
+          <button data-page="${data.page + 1}" ${data.page >= totalPages ? 'disabled' : ''}>Next ›</button>
+        </span>`;
+      els.results.appendChild(pager);
+    }
+
     for (const btn of els.results.querySelectorAll('.whybtn')) {
       btn.addEventListener('click', () => {
         const panel = $(`why-${btn.dataset.why}`);
@@ -799,6 +900,20 @@
         btn.querySelector('span').textContent = isOpen ? 'Your star chose this' : 'Why your star chose this';
       });
     }
+    wireResultActions(data);
+  }
+
+  // Pager buttons and the "search instead for…" escape hatch.
+  function wireResultActions(data) {
+    for (const btn of els.results.querySelectorAll('.pager button[data-page]')) {
+      btn.addEventListener('click', () => {
+        if (btn.disabled) return;
+        runSearch(data.query, { page: Number(btn.dataset.page) });
+        window.scrollTo({ top: 0, behavior: reduced ? 'auto' : 'smooth' });
+      });
+    }
+    const literal = els.results.querySelector('[data-literal]');
+    if (literal) literal.addEventListener('click', () => runSearch(data.correction.from, { literal: true }));
   }
 
   // Match the RAW text and escape each piece, so entities can't be corrupted.
@@ -816,15 +931,17 @@
     return out + esc(text.slice(last));
   }
 
-  async function runSearch(q) {
+  async function runSearch(q, { page = 1, literal = false } = {}) {
     const tab = activeTab();
     tab.q = q; tab.fromCache = false;
+    els.q.value = q;
     renderTabs(); hideSuggest();
     const stillActive = () => state.active === tab.id;
     const isPrivate = privateMode || !settings.saveHistory;
     let data;
     try {
-      const res = await fetch(`/v1/search?q=${encodeURIComponent(q)}&per_page=${settings.resultsPerPage}${isPrivate ? '&private=1' : ''}`);
+      const res = await fetch(`/v1/search?q=${encodeURIComponent(q)}&per_page=${settings.resultsPerPage}`
+        + `&page=${page}${literal ? '&literal=1' : ''}${isPrivate ? '&private=1' : ''}`);
       data = await res.json().catch(() => ({}));
       if (!res.ok) {
         tab.data = null; saveState();

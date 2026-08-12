@@ -32,7 +32,7 @@ standard-library Node.
 ```bash
 npm run seed     # load sample documents so search works immediately
 npm start        # http://127.0.0.1:3000
-npm test         # 54 tests, including the ranking-integrity test
+npm test         # 67 tests, including the ranking-integrity test
 ```
 
 Open http://127.0.0.1:3000 and search for *pour over coffee*, *closures*, or
@@ -48,9 +48,18 @@ Open http://127.0.0.1:3000 and search for *pour over coffee*, *closures*, or
   "Continue without one," held open with equal dignity), and up to three
   curiosities that seed the first suggested searches. Replay it any time from
   the footer, or with `?story=1`.
-- **Explains every result.** Each hit carries a `why` object — a plain-language
-  summary plus the numeric factors behind the score. The full ranking formula
-  is public API at `GET /v1/ranking`.
+- **Explains every result.** Each hit carries a `why` object — the star's own
+  reasoning ("Your star chose this because…") as concrete, checkable items,
+  plus the numeric factors. The full formula is public at `GET /v1/ranking`.
+- **A real query language.** `"exact phrase"` requires the words together and
+  in order, `-word` rules pages out, `site:example.org` stays on one host.
+  Operators can only ever *narrow* — none of them can promote a page, and the
+  star names every operator it obeyed.
+- **Forgives typos.** A word the index has never seen is matched against the
+  vocabulary by edit distance: it searches what you meant, says so, and leaves
+  the literal search one tap away. Corrections never cross the first letter,
+  so "bat" is never quietly turned into "cat".
+- **Pages.** Results paginate with an honest position ("11–20 of 43 · page 2 of 5").
 - **Tabs.** The web app is a small browser: multiple search tabs, each with its
   own query and results, restored (with cached results) when you come back.
 - **History.** Searches are remembered server-side against your account, or an
@@ -75,15 +84,23 @@ Open http://127.0.0.1:3000 and search for *pour over coffee*, *closures*, or
 
 ```json
 "why": {
-  "summary": "Matches all 3 of your search terms; “pour” and “coffee” appear in the title; contains the exact phrase “pour over”; 2 other indexed pages link here; crawled today.",
-  "matched": { "terms": ["pour", "over", "coffee"], "of": 3, "missing": [],
-               "inTitle": ["pour", "coffee"], "inDescription": [] },
-  "exactPhrase": "pour over",
-  "inboundLinks": 2,
-  "factors": { "textRelevance": 4.206, "linkAuthority": 1.12,
+  "lead": "Your star chose this because",
+  "reasons": [
+    { "signal": "text_relevance",   "text": "It matches every word you searched for." },
+    { "signal": "text_relevance",   "text": "“pour”, “over” and “coffee” sit in the page's own title, not buried in the body." },
+    { "signal": "phrase_proximity", "text": "Your exact phrase “pour over” appears here, words together and in order." },
+    { "signal": "link_authority",   "text": "2 other pages in the index chose to link here — authority it earned, not bought." },
+    { "signal": "freshness",        "text": "It was crawled today, so what you’re reading is current." }
+  ],
+  "assurance": "Nothing was paid to put this here. Ranking cannot be bought.",
+  "factors": { "textRelevance": 2.473, "linkAuthority": 1.35,
                "phraseProximity": 1.2, "freshness": 1.05 }
 }
 ```
+
+The reasoning stays honest in both directions: a page last crawled two years
+ago is described as an older source, not as "current", and a page that matched
+only some of your words says which ones are missing.
 
 ## Crawl the real web
 
@@ -136,18 +153,28 @@ so Node's fetch uses `HTTPS_PROXY`.
 | --- | --- |
 | `src/core/tokenizer.js` | Normalization, light stemming, stopword handling |
 | `src/core/index.js` | Inverted index, field hit tracking, PageRank + inlinks |
+| `src/core/query.js` | Query language: phrases, exclusion, site filter, typo correction |
 | `src/core/ranker.js` | Scoring, snippets, diversity, `why` receipts — the trust core |
 | `src/crawler/` | robots.txt parser, HTML extraction, polite BFS crawler |
 | `src/api/` | HTTP app, accounts/keys, settings, history, sessions |
 | `public/index.html` | The Northstar web app (installable PWA) |
 | `ios/` | SwiftUI `WKWebView` shell for the App Store path |
-| `test/` | 54 tests, run with `npm test` |
+| `test/` | 67 tests, run with `npm test` |
 
 ## API
 
 ```bash
-# Search (why-receipts included on every result)
+# Search (the star's reasoning included on every result)
 curl 'localhost:3000/v1/search?q=pour+over+coffee'
+
+# Query operators
+curl 'localhost:3000/v1/search?q="light pollution"'        # exact phrase
+curl 'localhost:3000/v1/search?q=coffee+-espresso'          # rule a word out
+curl 'localhost:3000/v1/search?q=site:sky.example.org+stars'
+
+# Pages, and turning spelling correction off
+curl 'localhost:3000/v1/search?q=stars&page=2&per_page=10'
+curl 'localhost:3000/v1/search?q=polarus&literal=1'
 
 # Private search — never recorded to history
 curl 'localhost:3000/v1/search?q=pour+over+coffee&private=1'

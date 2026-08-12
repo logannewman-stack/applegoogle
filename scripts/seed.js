@@ -11,8 +11,13 @@ const config = makeConfig();
 const store = await new JsonStore(config.dataDir, 'index', emptyIndexData()).load();
 const index = new SearchIndex(store);
 
-const seedsPath = new URL('../seeds/sample-docs.json', import.meta.url);
-const docs = JSON.parse(await readFile(seedsPath, 'utf8'));
+// Every JSON file in seeds/ is loaded, so the corpus grows by adding files.
+const files = ['sample-docs.json', 'extra-docs.json'];
+const docs = [];
+for (const file of files) {
+  const path = new URL(`../seeds/${file}`, import.meta.url);
+  docs.push(...JSON.parse(await readFile(path, 'utf8')));
+}
 
 const fetchedAt = new Date().toISOString();
 for (const doc of docs) {
