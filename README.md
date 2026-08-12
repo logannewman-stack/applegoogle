@@ -32,11 +32,18 @@ standard-library Node.
 ```bash
 npm run seed     # load sample documents so search works immediately
 npm start        # http://127.0.0.1:3000
-npm test         # 81 tests, including the ranking-integrity test
+npm test         # 88 tests, including the ranking-integrity test
 ```
 
 Open http://127.0.0.1:3000 and search for *pour over coffee*, *closures*, or
-*ad-free search*. Click **Why this result ▸** under any hit.
+*ad-free search*. Every result carries its reasoning underneath.
+
+**Two guides go further:**
+
+- **[SETUP.md](SETUP.md)** — from nothing to searching the whole live web,
+  step by step, with what you should see at each step.
+- **[DEPLOY.md](DEPLOY.md)** — putting it on the internet with a Vercel
+  account and nothing else. No database required, and the reason why.
 
 ## What the product does
 
@@ -237,7 +244,7 @@ so Node's fetch uses `HTTPS_PROXY`.
 | `src/api/` | HTTP app, accounts/keys, settings, history, sessions |
 | `public/index.html` | The Northstar web app (installable PWA) |
 | `ios/` | SwiftUI `WKWebView` shell for the App Store path |
-| `test/` | 81 tests, run with `npm test` |
+| `test/` | 88 tests, run with `npm test` |
 
 ## API
 

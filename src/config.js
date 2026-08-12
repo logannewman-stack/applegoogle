@@ -31,12 +31,31 @@ function loadEnvFiles() {
 }
 loadEnvFiles();
 
+// A serverless host (Vercel and friends) gives you a read-only project
+// directory and a /tmp that dies with the instance. Northstar still works
+// there — it boots from the bundled corpus and reads the live web for every
+// query — but nothing it learns is kept, so several defaults have to change:
+// write to /tmp, build the index on boot, trust the proxy's forwarded IP, and
+// use a provider that needs no container running next door.
+const isEphemeralHost = () => process.env.VERCEL === '1' || process.env.NORTHSTAR_EPHEMERAL === '1';
+
+// For flags where "unset" and "explicitly off" must stay distinguishable.
+const flag = (v, fallback) => (v === undefined || v === '' ? fallback : v === '1');
+
 export function makeConfig(overrides = {}) {
   const env = process.env;
+  const ephemeral = isEphemeralHost();
   return {
     port: num(env.PORT, 3000),
     host: env.HOST || '127.0.0.1',
-    dataDir: env.DATA_DIR || new URL('../data/', import.meta.url).pathname,
+    dataDir: env.DATA_DIR || (ephemeral ? '/tmp/northstar/' : new URL('../data/', import.meta.url).pathname),
+
+    // True when the disk will not outlive the process. Surfaced through the
+    // API so the app can say so plainly, rather than letting someone build up
+    // a history that quietly disappears.
+    ephemeral,
+    // Build the index from seeds/ whenever the store comes up empty.
+    seedWhenEmpty: flag(env.SEED_WHEN_EMPTY, ephemeral),
 
     // Northstar is free right now — no tiers, no premium anything. The one
     // limit is a high fair-use ceiling, identical for everyone, that exists
@@ -44,14 +63,20 @@ export function makeConfig(overrides = {}) {
     // never advertising.)
     dailyFairUseCeiling: num(env.DAILY_FAIR_USE_CEILING, 2000),
 
-    // Set to true only when running behind a reverse proxy that sets X-Forwarded-For.
-    trustProxy: env.TRUST_PROXY === '1',
+    // Set to true only when running behind a reverse proxy that sets
+    // X-Forwarded-For — which a serverless host always is.
+    trustProxy: flag(env.TRUST_PROXY, ephemeral),
 
-    // Live web discovery — off unless asked for. When on, a provider supplies
-    // candidate URLs for queries the local index answers poorly, and Northstar
-    // fetches, indexes and ranks those pages itself.
-    webDiscovery: env.WEB_DISCOVERY === '1',
-    searchProvider: env.SEARCH_PROVIDER || 'searxng', // needs no key
+    // Live web discovery — off unless asked for, because it reaches the
+    // network. On a deployed host it is the whole point, so it defaults on
+    // there: without it a public Northstar could only search its own seeds.
+    // When on, a provider supplies candidate URLs for queries the local index
+    // answers poorly, and Northstar fetches, indexes and ranks them itself.
+    webDiscovery: flag(env.WEB_DISCOVERY, ephemeral),
+    // SearXNG is the best local default (keyless, whole web) but it is a
+    // container on your own machine, and a serverless function has no
+    // neighbour to talk to. There, fall back to the keyless hosted option.
+    searchProvider: env.SEARCH_PROVIDER || (ephemeral ? 'wikipedia' : 'searxng'),
     searxngUrl: env.SEARXNG_URL || 'http://localhost:8888',
     searchApiKey: env.BRAVE_API_KEY || env.GOOGLE_API_KEY || env.BING_API_KEY || env.SEARCH_API_KEY || null,
     searchEngineId: env.GOOGLE_CSE_ID || null,

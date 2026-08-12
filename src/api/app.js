@@ -19,6 +19,7 @@ import {
 } from './history.js';
 import { Discovery } from '../websearch/discovery.js';
 import { PROVIDERS } from '../websearch/providers.js';
+import { seedIndex } from '../storage/corpus.js';
 
 const INDEX_HTML_PATH = new URL('../../public/index.html', import.meta.url);
 const MAX_BODY_BYTES = 64 * 1024;
@@ -111,6 +112,14 @@ export async function createApp(overrides = {}) {
   const usageStore = await new JsonStore(config.dataDir, 'usage', emptyUsageData()).load();
   const historyStore = await new JsonStore(config.dataDir, 'history', emptyHistoryData()).load();
   const index = new SearchIndex(indexStore);
+
+  // On a host with no lasting disk, every cold start begins with an empty
+  // store. Build the bundled corpus in memory so the first visitor to a fresh
+  // instance is searching something rather than nothing.
+  if (config.seedWhenEmpty && index.docCount === 0) {
+    await seedIndex(index);
+  }
+
   const discovery = new Discovery(index, config, {
     fetchImpl: overrides.fetchImpl || fetch,
     log: (m) => console.log(`[discovery] ${m}`),
@@ -159,7 +168,12 @@ export async function createApp(overrides = {}) {
 
   const handlers = {
     'GET /health': async (_req, res) => {
-      sendJson(res, 200, { ok: true, documents: index.docCount, uptimeSeconds: Math.round((Date.now() - startedAt) / 1000) });
+      sendJson(res, 200, {
+        ok: true,
+        documents: index.docCount,
+        uptimeSeconds: Math.round((Date.now() - startedAt) / 1000),
+        storage: config.ephemeral ? 'ephemeral' : 'persistent',
+      });
     },
 
     'GET /v1/search': async (req, res, url) => {
@@ -313,6 +327,14 @@ export async function createApp(overrides = {}) {
           enabled: discovery.enabled,
           provider: config.searchProvider,
           providers: Object.keys(PROVIDERS),
+        },
+        // Honesty about the host: on ephemeral storage the index, accounts
+        // and history live only as long as this instance does.
+        storage: {
+          durable: !config.ephemeral,
+          note: config.ephemeral
+            ? 'This deployment has no lasting disk. Pages read from the web, accounts and history last only as long as this instance.'
+            : 'Everything Northstar learns is written to disk and kept.',
         },
       });
     },
@@ -487,7 +509,9 @@ export async function createApp(overrides = {}) {
     return actor;
   }
 
-  const server = http.createServer(async (req, res) => {
+  // Kept separate from the server so a host that owns its own socket — a
+  // serverless function, a test — can drive the app directly.
+  async function handleRequest(req, res) {
     try {
       const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
 
@@ -526,11 +550,14 @@ export async function createApp(overrides = {}) {
     } catch (err) {
       sendError(res, err);
     }
-  });
+  }
+
+  const server = http.createServer(handleRequest);
 
   return {
     config,
     server,
+    handleRequest,
     index,
     stores: { index: indexStore, users: usersStore, usage: usageStore, history: historyStore },
     async close() {
