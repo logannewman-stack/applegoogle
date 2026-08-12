@@ -17,6 +17,8 @@ import { settingsFor, applySettings, historyEnabled, DEFAULT_SETTINGS } from './
 import {
   emptyHistoryData, recordSearch, listHistory, clearHistory, removeHistoryEntry, migrateHistory,
 } from './history.js';
+import { Discovery } from '../websearch/discovery.js';
+import { PROVIDERS } from '../websearch/providers.js';
 
 const INDEX_HTML_PATH = new URL('../../public/index.html', import.meta.url);
 const MAX_BODY_BYTES = 64 * 1024;
@@ -109,6 +111,10 @@ export async function createApp(overrides = {}) {
   const usageStore = await new JsonStore(config.dataDir, 'usage', emptyUsageData()).load();
   const historyStore = await new JsonStore(config.dataDir, 'history', emptyHistoryData()).load();
   const index = new SearchIndex(indexStore);
+  const discovery = new Discovery(index, config, {
+    fetchImpl: overrides.fetchImpl || fetch,
+    log: (m) => console.log(`[discovery] ${m}`),
+  });
   const startedAt = Date.now();
 
   // Result cache: repeated queries answer from memory. Keys embed the index's
@@ -184,7 +190,26 @@ export async function createApp(overrides = {}) {
       const usage = chargeSearch(usageStore.data, actor);
       usageStore.scheduleSave();
 
-      const { body, cacheStatus } = cachedSearch(q, page, perPage, !literal);
+      let { body, cacheStatus } = cachedSearch(q, page, perPage, !literal);
+
+      // Thin result set? Go and find more of the web, then answer from the
+      // enlarged index. The provider named URLs; the ranking below is ours.
+      let expanded = null;
+      if (discovery.enabled && page === 1 && body.total < config.discoveryMinResults
+          && !discovery.isCoolingDown(q)) {
+        try {
+          const result = await discovery.expand(q);
+          if (result.added > 0) {
+            index.computeAuthority();
+            indexStore.scheduleSave();
+            queryCache.clear();
+            ({ body, cacheStatus } = cachedSearch(q, page, perPage, !literal));
+            expanded = { added: result.added, provider: result.provider };
+          }
+        } catch (err) {
+          console.warn('[discovery]', err.message);
+        }
+      }
 
       if (!isPrivate && !crossSite) {
         recordSearch(historyStore.data, historyOwner(actor, session), q, body.total);
@@ -197,6 +222,7 @@ export async function createApp(overrides = {}) {
         ...body,
         cached: cacheStatus === 'hit',
         private: isPrivate,
+        expanded,
         plan: actor.plan,
         usageToday: usage,
       }, headers);
@@ -271,6 +297,32 @@ export async function createApp(overrides = {}) {
         documents: index.docCount,
         terms: index.termCount,
         updatedAt: index.data.updatedAt,
+        discovery: {
+          enabled: discovery.enabled,
+          provider: config.searchProvider,
+          providers: Object.keys(PROVIDERS),
+        },
+      });
+    },
+
+    // Reach past the local index on purpose: name a query, get real pages
+    // fetched, indexed and ranked by Northstar's own signals.
+    'POST /v1/discover': async (req, res, url) => {
+      const body = await readBody(req);
+      const q = String(body.q || url.searchParams.get('q') || '').trim();
+      if (!q) {
+        throw Object.assign(new Error('Give me something to look for: {"q": "…"}.'), { status: 400, code: 'missing_query' });
+      }
+      const result = await discovery.expand(q, { force: body.force === true });
+      if (result.added > 0) {
+        index.computeAuthority();
+        indexStore.scheduleSave();
+        queryCache.clear();
+      }
+      sendJson(res, 200, {
+        ...result,
+        documents: index.docCount,
+        note: 'The provider supplied candidate addresses only. Northstar fetched, indexed and ranked these pages itself.',
       });
     },
 

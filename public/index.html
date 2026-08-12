@@ -193,7 +193,23 @@
   .results-meta { color: var(--faint); font-size: .78rem; margin: var(--s5) 0 var(--s2); }
   .result { padding: var(--s4) 0; border-bottom: 1px solid var(--line); }
   .result:last-child { border-bottom: none; }
-  .result .site { font-size: .77rem; color: var(--faint); margin-bottom: .1rem; overflow-wrap: anywhere; }
+  /* The address, the way you'd read it aloud: site first, then the path.
+     The monogram is generated from the domain — Northstar never loads a
+     third-party favicon, because that would tell every site in your results
+     that you looked at them. */
+  .result .site {
+    display: flex; align-items: center; gap: .45rem;
+    font-size: .78rem; color: var(--faint); margin-bottom: .2rem; overflow-wrap: anywhere;
+  }
+  .result .site .mono {
+    flex: none; width: 1.15rem; height: 1.15rem; border-radius: 50%;
+    display: grid; place-items: center; font-size: .62rem; font-weight: 600;
+    background: var(--wash); border: 1px solid var(--line); color: var(--ink);
+    text-transform: uppercase;
+  }
+  .result .site .addr { min-width: 0; }
+  .result .site .host { color: var(--ink); }
+  .result .site .sep { padding: 0 .18rem; opacity: .55; }
   .result a.title {
     color: var(--ink); font-size: 1.1rem; font-weight: 600; text-decoration: none;
     letter-spacing: -.011em; line-height: 1.35; display: inline-block;
@@ -837,6 +853,12 @@
       head += `<div class="oplist">${tags.map((t) => `<span class="optag">${t}</span>`).join('')}</div>`;
     }
 
+    if (data.expanded) {
+      head += `<div class="notice">Northstar went and read
+        ${data.expanded.added} new ${data.expanded.added === 1 ? 'page' : 'pages'} from the web for this,
+        then ranked them itself.</div>`;
+    }
+
     if (!data.results || !data.results.length) {
       els.results.innerHTML = head + `<div class="empty">
         Nothing matched <strong>${esc(data.query)}</strong>.
@@ -869,7 +891,7 @@
           </div>
         </div></div></div>` : '';
       return `<div class="result">
-        <div class="site">${esc(r.domain)}</div>
+        <div class="site">${addressLine(r)}</div>
         <a class="title" href="${esc(r.url)}" rel="noopener"${target}>${esc(r.title)}</a>
         <div class="snippet">${highlight(r.snippet, data.normalizedTerms || [])}</div>
         ${why}
@@ -914,6 +936,23 @@
     }
     const literal = els.results.querySelector('[data-literal]');
     if (literal) literal.addEventListener('click', () => runSearch(data.correction.from, { literal: true }));
+  }
+
+  // "brew.example.org › guides › pour-over" — the address as a person reads
+  // it, with a monogram generated locally instead of a fetched favicon.
+  function addressLine(r) {
+    let host = r.domain, crumbs = [];
+    try {
+      const u = new URL(r.url);
+      host = u.hostname.replace(/^www\./, '');
+      crumbs = u.pathname.split('/').filter(Boolean)
+        .map((s) => decodeURIComponent(s).replace(/\.(html?|php|aspx?)$/i, ''))
+        .slice(0, 3);
+    } catch {}
+    const letter = (host.replace(/^www\./, '')[0] || '?');
+    const trail = crumbs.map((c) => `<span class="sep">›</span>${esc(c)}`).join('');
+    return `<span class="mono" aria-hidden="true">${esc(letter)}</span>
+      <span class="addr"><span class="host">${esc(host)}</span>${trail}</span>`;
   }
 
   // Match the RAW text and escape each piece, so entities can't be corrupted.

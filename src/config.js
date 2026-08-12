@@ -22,8 +22,20 @@ export function makeConfig(overrides = {}) {
     // Set to true only when running behind a reverse proxy that sets X-Forwarded-For.
     trustProxy: env.TRUST_PROXY === '1',
 
+    // Live web discovery — off unless asked for. When on, a provider supplies
+    // candidate URLs for queries the local index answers poorly, and Northstar
+    // fetches, indexes and ranks those pages itself.
+    webDiscovery: env.WEB_DISCOVERY === '1',
+    searchProvider: env.SEARCH_PROVIDER || 'wikipedia', // needs no key
+    searchApiKey: env.BRAVE_API_KEY || env.GOOGLE_API_KEY || env.BING_API_KEY || env.SEARCH_API_KEY || null,
+    searchEngineId: env.GOOGLE_CSE_ID || null,
+    wikipediaHost: env.WIKIPEDIA_HOST || 'en.wikipedia.org',
+    discoveryLimit: num(env.DISCOVERY_LIMIT, 6), //  candidate URLs per expansion
+    discoveryMinResults: num(env.DISCOVERY_MIN_RESULTS, 3), // expand when fewer than this
+    discoveryCooldownMs: num(env.DISCOVERY_COOLDOWN_MS, 6 * 60 * 60 * 1000),
+
     // Crawler politeness
-    crawlUserAgent: env.CRAWL_USER_AGENT || 'northstar-crawler/0.2 (respectful; obeys robots.txt)',
+    crawlUserAgent: env.CRAWL_USER_AGENT || 'northstar-crawler/0.3 (respectful; obeys robots.txt)',
     crawlDelayMs: num(env.CRAWL_DELAY_MS, 1000),
     crawlTimeoutMs: num(env.CRAWL_TIMEOUT_MS, 10000),
     crawlMaxBytes: num(env.CRAWL_MAX_BYTES, 2 * 1024 * 1024),

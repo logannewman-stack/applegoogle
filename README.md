@@ -32,7 +32,7 @@ standard-library Node.
 ```bash
 npm run seed     # load sample documents so search works immediately
 npm start        # http://127.0.0.1:3000
-npm test         # 67 tests, including the ranking-integrity test
+npm test         # 76 tests, including the ranking-integrity test
 ```
 
 Open http://127.0.0.1:3000 and search for *pour over coffee*, *closures*, or
@@ -102,7 +102,47 @@ The reasoning stays honest in both directions: a page last crawled two years
 ago is described as an older source, not as "current", and a page that matched
 only some of your words says which ones are missing.
 
-## Crawl the real web
+## Getting real results
+
+Northstar owns its index — it does not proxy anyone else's. There are three
+ways to fill it, and they compose.
+
+### 1. Bootstrap a real index in one command
+
+```bash
+npm run bootstrap                 # crawl the curated starter sites
+npm run bootstrap -- --pages=400  # go deeper
+npm run bootstrap -- --topic=code
+```
+
+### 2. Live discovery — the index grows from what people ask
+
+Turn it on and a query the index answers poorly sends Northstar out to read
+the web:
+
+```bash
+WEB_DISCOVERY=1 npm start                          # Wikipedia, no API key needed
+WEB_DISCOVERY=1 SEARCH_PROVIDER=brave BRAVE_API_KEY=… npm start
+WEB_DISCOVERY=1 SEARCH_PROVIDER=google GOOGLE_API_KEY=… GOOGLE_CSE_ID=… npm start
+WEB_DISCOVERY=1 SEARCH_PROVIDER=bing  BING_API_KEY=… npm start
+```
+
+Or expand on purpose:
+
+```bash
+curl -X POST localhost:3000/v1/discover -H 'content-type: application/json' -d '{"q":"tidal range"}'
+```
+
+**A provider only ever supplies candidate URLs.** Northstar fetches each page
+itself (obeying `robots.txt` exactly as in any crawl), extracts it, indexes it,
+recomputes authority, and ranks it with its own signals. The provider's
+ordering is discarded — a test asserts that the page which actually matches
+wins even when the provider listed another one first. That is what lets
+Northstar reach the whole web without importing somebody else's ranking, and
+it is why the covenant in [INTEGRITY.md](INTEGRITY.md) survives federation.
+Every discovered page then explains itself like any other result.
+
+### 3. Crawl exactly what you want
 
 ```bash
 npm run crawl -- https://example.com --max-pages=50 --depth=2
@@ -155,11 +195,12 @@ so Node's fetch uses `HTTPS_PROXY`.
 | `src/core/index.js` | Inverted index, field hit tracking, PageRank + inlinks |
 | `src/core/query.js` | Query language: phrases, exclusion, site filter, typo correction |
 | `src/core/ranker.js` | Scoring, snippets, diversity, `why` receipts — the trust core |
+| `src/websearch/` | Discovery providers (URLs only) + fetch-and-index expansion |
 | `src/crawler/` | robots.txt parser, HTML extraction, polite BFS crawler |
 | `src/api/` | HTTP app, accounts/keys, settings, history, sessions |
 | `public/index.html` | The Northstar web app (installable PWA) |
 | `ios/` | SwiftUI `WKWebView` shell for the App Store path |
-| `test/` | 67 tests, run with `npm test` |
+| `test/` | 76 tests, run with `npm test` |
 
 ## API
 
