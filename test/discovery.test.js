@@ -138,6 +138,65 @@ test('a repeated query cools down instead of hammering the provider', async () =
   assert.notEqual(forced.skipped, 'cooling_down');
 });
 
+// A page server that takes `delay` ms to answer anything but robots.txt.
+async function slowSite(delay, host = '127.0.0.1') {
+  const s = http.createServer((req, res) => {
+    if (req.url === '/robots.txt') {
+      return res.writeHead(200, { 'content-type': 'text/plain' }).end('User-agent: *\nAllow: /');
+    }
+    setTimeout(() => {
+      res.writeHead(200, { 'content-type': 'text/html' })
+        .end('<html><head><title>Tides here</title></head><body><p>A page about tides and the moon, with plenty of words to index properly.</p></body></html>');
+    }, delay);
+  });
+  await new Promise((r) => s.listen(0, host, r));
+  return { server: s, url: `http://${host}:${s.address().port}/page` };
+}
+
+test('different hosts are fetched concurrently, not one after another', async () => {
+  // Politeness is per-host, so two different hosts must not queue behind
+  // each other. 127.0.0.1 and localhost are distinct hostnames.
+  const a = await slowSite(200, '127.0.0.1');
+  const b = await slowSite(200, 'localhost');
+  const index = makeIndex();
+  const { Crawler } = await import('../src/crawler/crawler.js');
+  const crawler = new Crawler(index, makeConfig({ crawlDelayMs: 800, crawlTimeoutMs: 5000 }));
+
+  try {
+    const t0 = Date.now();
+    const stats = await crawler.fetchAll([a.url, b.url]);
+    const elapsed = Date.now() - t0;
+    assert.equal(stats.indexed, 2);
+    // Same-host would have cost ≥ 800ms of politeness delay on top.
+    assert.ok(elapsed < 800, `ran in parallel (${elapsed}ms)`);
+  } finally {
+    for (const s of [a.server, b.server]) { s.close(); s.closeAllConnections?.(); }
+  }
+});
+
+test('one slow host cannot hang a search — the rest finishes in the background', async () => {
+  const slow = await slowSite(3000, 'localhost'); // a different host to `origin`
+  const index = makeIndex();
+  const config = stubProvider([slow.url, `${origin}/tides`]);
+  config.discoveryBudgetMs = 500;
+  const d = new Discovery(index, config);
+
+  try {
+    const t0 = Date.now();
+    const result = await d.expand('tides');
+    const elapsed = Date.now() - t0;
+
+    assert.ok(elapsed < 2000, `answered in ${elapsed}ms instead of waiting 3s`);
+    assert.ok(result.added >= 1, 'the fast page made this response');
+    assert.equal(result.deferred, 1, 'the slow page is deferred, not dropped or failed');
+    assert.equal(result.errors, 0, 'a budget cut is not an error');
+  } finally {
+    await d.pending?.catch(() => {});
+    slow.server.close();
+    slow.server.closeAllConnections?.();
+  }
+});
+
 test('discovery is off unless asked for', async () => {
   const index = makeIndex();
   const d = new Discovery(index, makeConfig({ webDiscovery: false }));

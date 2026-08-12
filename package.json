@@ -10,6 +10,8 @@
   "scripts": {
     "start": "node server.js",
     "seed": "node scripts/seed.js",
+    "setup:web": "node scripts/setup-web.js",
+    "doctor": "node scripts/doctor.js",
     "bootstrap": "node scripts/bootstrap.js",
     "crawl": "node scripts/crawl.js",
     "create-user": "node scripts/create-user.js",

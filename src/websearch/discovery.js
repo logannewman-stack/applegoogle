@@ -94,20 +94,37 @@ export class Discovery {
       return { added: 0, considered: candidates.length, provider: provider.id, tookMs: Date.now() - started };
     }
 
-    // Fetch and index them ourselves — same politeness rules as any crawl.
-    // depth 0: exactly the pages named, nothing followed.
-    const stats = await this.crawler.crawl(fresh, {
-      maxPages: fresh.length,
-      maxDepth: 0,
-      sameDomain: false,
-    });
+    // Fetch and index them ourselves — same politeness rules as any crawl,
+    // but concurrently across hosts and bounded by a deadline so a search
+    // never hangs waiting for a slow site.
+    const deadline = started + this.config.discoveryBudgetMs;
+    const stats = await this.crawler.fetchAll(fresh, { deadline, log: this.log });
+
+    // Anything the deadline cut short is finished after the response goes
+    // out, so the index still gets it — just not on this request's clock.
+    if (stats.remaining.length > 0) {
+      this.log(`${stats.remaining.length} page(s) past the budget — finishing in the background`);
+      // Exposed so callers (and tests) can await the tail if they want it.
+      this.pending = this.crawler.fetchAll(stats.remaining, { log: this.log })
+        .then((late) => {
+          if (late.indexed > 0) {
+            this.index.computeAuthority();
+            this.onBackgroundIndexed?.(late.indexed);
+          }
+          return late;
+        })
+        .catch((err) => {
+          this.log(`background fetch failed: ${err.message}`);
+          return { indexed: 0 };
+        });
+    }
 
     return {
       added: stats.indexed,
       considered: candidates.length,
-      fetched: stats.fetched,
       skipped: stats.skipped,
       errors: stats.errors,
+      deferred: stats.remaining.length,
       provider: provider.id,
       tookMs: Date.now() - started,
     };

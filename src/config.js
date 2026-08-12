@@ -1,10 +1,35 @@
 // Central configuration. Everything is overridable via environment variables,
 // and programmatically via `overrides` (used by tests).
 
+import { readFileSync } from 'node:fs';
+
 const num = (v, fallback) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
 };
+
+// Load .env.local / .env if present. A variable already set in the real
+// environment always wins — a file must never override an explicit export.
+function loadEnvFiles() {
+  for (const name of ['.env.local', '.env']) {
+    let text;
+    try { text = readFileSync(new URL(`../${name}`, import.meta.url), 'utf8'); } catch { continue; }
+    for (const line of text.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const eq = trimmed.indexOf('=');
+      if (eq < 1) continue;
+      const key = trimmed.slice(0, eq).trim();
+      if (key in process.env) continue;
+      let value = trimmed.slice(eq + 1).trim();
+      if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+        value = value.slice(1, -1);
+      }
+      process.env[key] = value;
+    }
+  }
+}
+loadEnvFiles();
 
 export function makeConfig(overrides = {}) {
   const env = process.env;
@@ -33,6 +58,9 @@ export function makeConfig(overrides = {}) {
     discoveryLimit: num(env.DISCOVERY_LIMIT, 6), //  candidate URLs per expansion
     discoveryMinResults: num(env.DISCOVERY_MIN_RESULTS, 3), // expand when fewer than this
     discoveryCooldownMs: num(env.DISCOVERY_COOLDOWN_MS, 6 * 60 * 60 * 1000),
+    // How long a search may wait for new pages before answering with what it
+    // has; anything slower keeps loading in the background.
+    discoveryBudgetMs: num(env.DISCOVERY_BUDGET_MS, 2500),
 
     // Crawler politeness
     crawlUserAgent: env.CRAWL_USER_AGENT || 'northstar-crawler/0.3 (respectful; obeys robots.txt)',

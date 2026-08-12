@@ -79,10 +79,14 @@ export const googleCse = {
 };
 
 // ── Bing Web Search ───────────────────────────────────────────────────
+// Microsoft announced the retirement of the Bing Search APIs (August 2025).
+// Kept because self-hosted and legacy endpoints still answer for some
+// customers, but do not build on it — check availability before choosing it.
 export const bing = {
   id: 'bing',
   needsKey: true,
-  label: 'Bing Web Search',
+  retired: true,
+  label: 'Bing Web Search (retired by Microsoft — verify availability)',
   keyEnv: 'BING_API_KEY',
   async discover(query, { limit = 8, config = {}, fetchImpl = fetch } = {}) {
     const api = `https://api.bing.microsoft.com/v7.0/search?count=${limit}&q=${encodeURIComponent(query)}`;
@@ -95,6 +99,35 @@ export const bing = {
 };
 
 export const PROVIDERS = { wikipedia, brave, google: googleCse, bing };
+
+// Guidance shown by `npm run setup:web`. Costs move — verify before relying
+// on them; these are recorded as of the last time this file was touched.
+export const PROVIDER_NOTES = {
+  brave: {
+    recommended: true,
+    independence: 'Independent index — Brave runs its own crawler, so Northstar is not quietly asking Google.',
+    cost: 'Free tier available (~2k queries/month at time of writing), paid tiers beyond that.',
+    signup: 'https://brave.com/search/api/',
+  },
+  wikipedia: {
+    recommended: false,
+    independence: 'Fully open, no key, no account — but encyclopedia content only.',
+    cost: 'Free.',
+    signup: 'No signup needed.',
+  },
+  google: {
+    recommended: false,
+    independence: 'Google’s index. Broadest coverage, but your independent engine is calling Google.',
+    cost: '~100 queries/day free, paid per thousand beyond that, with a daily cap.',
+    signup: 'https://programmablesearchengine.google.com/ (also needs GOOGLE_CSE_ID)',
+  },
+  bing: {
+    recommended: false,
+    independence: 'Microsoft’s index.',
+    cost: 'Retired by Microsoft in 2025 — verify it is still available to you before choosing it.',
+    signup: 'https://www.microsoft.com/en-us/bing/apis',
+  },
+};
 
 export function getProvider(config) {
   const provider = PROVIDERS[config.searchProvider];

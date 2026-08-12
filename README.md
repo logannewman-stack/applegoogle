@@ -32,7 +32,7 @@ standard-library Node.
 ```bash
 npm run seed     # load sample documents so search works immediately
 npm start        # http://127.0.0.1:3000
-npm test         # 76 tests, including the ranking-integrity test
+npm test         # 78 tests, including the ranking-integrity test
 ```
 
 Open http://127.0.0.1:3000 and search for *pour over coffee*, *closures*, or
@@ -102,47 +102,68 @@ The reasoning stays honest in both directions: a page last crawled two years
 ago is described as an older source, not as "current", and a page that matched
 only some of your words says which ones are missing.
 
-## Getting real results
-
-Northstar owns its index — it does not proxy anyone else's. There are three
-ways to fill it, and they compose.
-
-### 1. Bootstrap a real index in one command
+## Searching the real web
 
 ```bash
-npm run bootstrap                 # crawl the curated starter sites
-npm run bootstrap -- --pages=400  # go deeper
-npm run bootstrap -- --topic=code
+npm run setup:web     # choose a provider, store the key, verify it end to end
+npm run bootstrap     # crawl real pages into an index of your own
+npm start
+npm run doctor        # if anything misbehaves, this says exactly what
 ```
 
-### 2. Live discovery — the index grows from what people ask
+That is the whole setup. The rest of this section is why it is built this way,
+and what to choose.
 
-Turn it on and a query the index answers poorly sends Northstar out to read
-the web:
-
-```bash
-WEB_DISCOVERY=1 npm start                          # Wikipedia, no API key needed
-WEB_DISCOVERY=1 SEARCH_PROVIDER=brave BRAVE_API_KEY=… npm start
-WEB_DISCOVERY=1 SEARCH_PROVIDER=google GOOGLE_API_KEY=… GOOGLE_CSE_ID=… npm start
-WEB_DISCOVERY=1 SEARCH_PROVIDER=bing  BING_API_KEY=… npm start
-```
-
-Or expand on purpose:
-
-```bash
-curl -X POST localhost:3000/v1/discover -H 'content-type: application/json' -d '{"q":"tidal range"}'
-```
+### The rule that shapes everything
 
 **A provider only ever supplies candidate URLs.** Northstar fetches each page
 itself (obeying `robots.txt` exactly as in any crawl), extracts it, indexes it,
 recomputes authority, and ranks it with its own signals. The provider's
 ordering is discarded — a test asserts that the page which actually matches
-wins even when the provider listed another one first. That is what lets
-Northstar reach the whole web without importing somebody else's ranking, and
-it is why the covenant in [INTEGRITY.md](INTEGRITY.md) survives federation.
-Every discovered page then explains itself like any other result.
+wins even when the provider listed another one first.
 
-### 3. Crawl exactly what you want
+This is the difference between *reaching* the whole web and *reselling*
+someone else's answers. Proxying a big engine's result list would mean
+inheriting whatever commercial pressure shaped it, and the covenant in
+[INTEGRITY.md](INTEGRITY.md) would be decoration. Borrowing addresses borrows
+nothing but addresses.
+
+### Which provider
+
+| Provider | Independence | Cost | Verdict |
+| --- | --- | --- | --- |
+| **Brave Search API** | Its own crawler and index | Free tier, then paid per thousand | **Start here** — real coverage without asking Google |
+| **Wikipedia** | Fully open, no key at all | Free | Great for testing; encyclopedia content only |
+| **Google Programmable Search** | Google's index | Small daily free quota, then paid, daily cap | Broadest reach, but your independent engine is calling Google |
+| **Bing Web Search** | Microsoft's index | — | Microsoft retired these APIs in 2025; verify before choosing |
+
+Costs and availability move — confirm current terms before you commit.
+
+The strongest setup is **both**: Brave (or Wikipedia) for discovery, plus your
+own crawl as the backbone. Crawled pages cost nothing per query and are
+permanently yours, so over time the provider matters less and less.
+
+### How discovery behaves in production
+
+- Searches that the local index answers poorly trigger an expansion; everything
+  else is served straight from your own index at no external cost.
+- Pages are fetched **concurrently across hosts** (politeness is a per-host
+  obligation, so one host never waits on another) and each host stays strictly
+  sequential and rate-limited.
+- A search never hangs on a slow site: `DISCOVERY_BUDGET_MS` (default 2.5s)
+  bounds the wait, in-flight requests are aborted at the deadline, and anything
+  cut short finishes in the background so the index still gets it.
+- The same query will not re-expand for `DISCOVERY_COOLDOWN_MS` (default 6h),
+  identical concurrent expansions share a single run, and already-indexed URLs
+  are never refetched.
+
+Expand on purpose at any time:
+
+```bash
+curl -X POST localhost:3000/v1/discover -H 'content-type: application/json' -d '{"q":"tidal range"}'
+```
+
+### Crawl exactly what you want
 
 ```bash
 npm run crawl -- https://example.com --max-pages=50 --depth=2
@@ -200,7 +221,7 @@ so Node's fetch uses `HTTPS_PROXY`.
 | `src/api/` | HTTP app, accounts/keys, settings, history, sessions |
 | `public/index.html` | The Northstar web app (installable PWA) |
 | `ios/` | SwiftUI `WKWebView` shell for the App Store path |
-| `test/` | 76 tests, run with `npm test` |
+| `test/` | 78 tests, run with `npm test` |
 
 ## API
 

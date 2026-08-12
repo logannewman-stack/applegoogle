@@ -42,14 +42,18 @@ export class Crawler {
     this.lastHitByHost.set(host, Date.now());
   }
 
-  async fetchPage(url) {
+  async fetchPage(url, { signal = null } = {}) {
     await this.politeWait(url);
+    // The caller's deadline (if any) bounds the request as tightly as our
+    // own timeout does, so a slow host can never outlast a search.
+    const timeout = AbortSignal.timeout(this.config.crawlTimeoutMs);
+    const combined = signal ? AbortSignal.any([timeout, signal]) : timeout;
     const res = await this.fetchImpl(url, {
       headers: {
         'user-agent': this.config.crawlUserAgent,
         accept: 'text/html,application/xhtml+xml',
       },
-      signal: AbortSignal.timeout(this.config.crawlTimeoutMs),
+      signal: combined,
       redirect: 'follow',
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -62,6 +66,79 @@ export class Crawler {
       throw new Error(`Too large (${buf.byteLength} bytes)`);
     }
     return { html: new TextDecoder().decode(buf), finalUrl: res.url || url };
+  }
+
+  // Fetch and index exactly these URLs, concurrently across hosts.
+  //
+  // Politeness is a per-host obligation, so waiting a second between two
+  // different sites buys nobody anything — it just makes search slow. Hosts
+  // run in parallel; each host stays strictly sequential and rate-limited.
+  // Returns { indexed, skipped, errors, remaining } where `remaining` is
+  // whatever the deadline cut short.
+  async fetchAll(urls, { deadline = Infinity, log = this.log } = {}) {
+    const byHost = new Map();
+    for (const url of urls) {
+      let host;
+      try { host = new URL(url).hostname; } catch { continue; }
+      if (!byHost.has(host)) byHost.set(host, []);
+      byHost.get(host).push(url);
+    }
+
+    const stats = { indexed: 0, skipped: 0, errors: 0, remaining: [] };
+    // One signal for the whole batch: when the budget runs out, in-flight
+    // requests are abandoned rather than allowed to finish on their own time.
+    const controller = new AbortController();
+    let deadlineTimer = null;
+    if (Number.isFinite(deadline)) {
+      const ms = Math.max(0, deadline - Date.now());
+      deadlineTimer = setTimeout(() => controller.abort(new Error('discovery budget reached')), ms);
+      deadlineTimer.unref?.();
+    }
+
+    await Promise.all([...byHost.values()].map(async (queue) => {
+      for (let i = 0; i < queue.length; i++) {
+        const url = queue[i];
+        if (controller.signal.aborted || Date.now() > deadline) {
+          stats.remaining.push(...queue.slice(i));
+          return;
+        }
+        try {
+          if (!(await this.robots.isAllowed(url))) {
+            stats.skipped++;
+            log(`robots.txt disallows: ${url}`);
+            continue;
+          }
+          const { html, finalUrl } = await this.fetchPage(url, { signal: controller.signal });
+          const page = extract(html);
+          if (page.noindex || (!page.title && page.text.length < 80)) {
+            stats.skipped++;
+            continue;
+          }
+          const canonical = normalizeUrl(page.canonical || finalUrl, finalUrl) || normalizeUrl(finalUrl);
+          this.index.addDocument({
+            url: canonical,
+            title: page.title,
+            description: page.description,
+            text: page.text,
+            links: page.links.map((l) => normalizeUrl(l, finalUrl)).filter(Boolean),
+            lang: page.lang,
+            fetchedAt: new Date().toISOString(),
+          });
+          stats.indexed++;
+          log(`indexed ${canonical}`);
+        } catch (err) {
+          // A page cut short by the budget is deferred, not failed.
+          if (controller.signal.aborted) {
+            stats.remaining.push(...queue.slice(i));
+            return;
+          }
+          stats.errors++;
+          log(`error: ${url} — ${err.message}`);
+        }
+      }
+    }));
+    clearTimeout(deadlineTimer);
+    return stats;
   }
 
   // seeds: string[]; options: { maxPages, maxDepth, sameDomain }
