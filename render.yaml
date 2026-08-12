@@ -1,0 +1,43 @@
+# Render — the same thing, if you prefer it to Fly.
+#
+# Push this file, then: Render dashboard → New → Blueprint → pick the repo.
+#
+# The disk is the point. Without it Render is just a slower Vercel: the index
+# would reset on every deploy and Northstar could never learn anything.
+
+services:
+  - type: web
+    name: northstar
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter # a disk cannot be attached to the free plan
+    healthCheckPath: /health
+
+    disk:
+      name: northstar-data
+      mountPath: /data
+      sizeGB: 3
+
+    envVars:
+      - key: PORT
+        value: 8080
+      - key: HOST
+        value: 0.0.0.0
+      - key: DATA_DIR
+        value: /data/
+      - key: STORAGE
+        value: sqlite
+      - key: SEED_WHEN_EMPTY
+        value: "1"
+      - key: TRUST_PROXY
+        value: "1"
+
+      # Reach past the local index when a question needs it.
+      - key: WEB_DISCOVERY
+        value: "1"
+      - key: SEARCH_PROVIDER
+        value: searxng
+      # Comma-separated instances — `npm run find-searxng` prints a list that
+      # works. Set in the dashboard so it is easy to change without a deploy.
+      - key: SEARXNG_URL
+        sync: false

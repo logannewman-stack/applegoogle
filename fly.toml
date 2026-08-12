@@ -1,0 +1,62 @@
+# Fly.io — a real Node process with a disk that survives.
+#
+#   fly launch --no-deploy --copy-config
+#   fly volumes create northstar_data --size 3
+#   fly deploy
+#
+# The volume is the reason to be here. Everything Northstar crawls is written
+# to it, so the index keeps growing across restarts and redeploys instead of
+# starting from nothing every time.
+
+app = "northstar"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8080"
+  HOST = "0.0.0.0"
+  DATA_DIR = "/data/"
+  STORAGE = "sqlite"
+  SEED_WHEN_EMPTY = "1"
+  TRUST_PROXY = "1"
+
+  # Reach past the local index when a question needs it. Keyless by default —
+  # set SEARXNG_URL to a comma-separated list of instances (npm run
+  # find-searxng prints one), or switch provider and add a key as a secret:
+  #   fly secrets set BRAVE_API_KEY=…
+  WEB_DISCOVERY = "1"
+  SEARCH_PROVIDER = "searxng"
+
+[[mounts]]
+  source = "northstar_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # Northstar holds its index in the process, so a cold start pays to rebuild
+  # its caches. Keep one machine up rather than paying that on every visit.
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 40
+    hard_limit = 80
+
+# A crawl and a search share one process, so give it room to hold a posting
+# list without swapping.
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"
+
+[checks.health]
+  type = "http"
+  port = 8080
+  path = "/health"
+  interval = "30s"
+  timeout = "5s"
+  grace_period = "20s"

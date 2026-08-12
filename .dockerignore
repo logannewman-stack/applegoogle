@@ -1,0 +1,9 @@
+data/
+test/
+ios/
+.git/
+.github/
+node_modules/
+.env
+.env.*
+*.md

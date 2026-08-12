@@ -1,21 +1,29 @@
 # Where Northstar runs
 
-You need no database. No Supabase, no Postgres, no Redis. Northstar's index is
-a JSON file and its ranking is pure computation, so the only two things it ever
-needs are a Node process and an outbound network connection.
+You need no database server. No Supabase, no Postgres, no Redis. The index is a
+SQLite file that Node 22 can open on its own, and ranking is pure computation,
+so Northstar needs exactly two things: a process, and somewhere to keep a file.
 
-That gives you exactly two places to run it, and they are for different jobs.
+What it needs *somewhere to keep a file* for is the whole story. An engine that
+has already read a few hundred thousand pages does not have to ask anyone
+anything for most questions. Every page it keeps is a question it can answer
+next time without going out to the web. **A deployment that forgets can never
+get better at its job** — it re-fetches the same pages forever and stays as
+good on its thousandth day as its first.
 
-| | **Your own machine** | **Vercel** |
-|---|---|---|
-| What it's for | Using it, crawling, building an index | A public URL people can open |
-| Keeps what it learns | Yes — `data/index.json` grows | No — wiped on every cold start |
-| Accounts & history | Kept | Last minutes, not days |
-| Whole-web search | Yes, SearXNG in Docker | Wikipedia free; whole web needs a key |
-| Cost | Nothing | Nothing (Hobby) |
-| Setup | [SETUP.md](SETUP.md) | This file, ~10 minutes |
+So there are three places to run this, and only two of them can learn.
 
-**Do both.** Your machine is the real engine. Vercel is the front door.
+| | **Fly / Render** | **Your machine** | **Vercel** |
+|---|---|---|---|
+| What it's for | The real public engine | Crawling, building an index | A front door only |
+| Keeps what it learns | **Yes — a real disk** | Yes | **No — wiped on every cold start** |
+| Index can grow to | Millions of pages | Millions | 43 seeds + this minute's crawl |
+| Accounts & history | Kept | Kept | Minutes, not days |
+| Cost | ~$0–7/month | Nothing | Nothing |
+| Setup | [Below](#the-engine-that-remembers-fly-or-render) | [SETUP.md](SETUP.md) | [Below](#the-front-door-vercel) |
+
+If you only do one thing, do Fly or Render. Vercel is a nice front door, but a
+Northstar that forgets is a demo of a search engine rather than one.
 
 ---
 
@@ -39,7 +47,64 @@ forgets — which for a public demo is arguably the more honest posture.
 
 ---
 
-## The to-do list
+---
+
+## The engine that remembers: Fly or Render
+
+Both files are already in the repo — `Dockerfile`, `fly.toml`, `render.yaml`.
+Both mount a real disk at `/data` and point Northstar at it, which is the only
+thing that actually matters here.
+
+### Fly.io
+
+```bash
+# once
+brew install flyctl        # or: curl -L https://fly.io/install.sh | sh
+fly auth signup
+
+# in the repo
+fly launch --no-deploy --copy-config
+fly volumes create northstar_data --size 3
+fly deploy
+```
+
+`--copy-config` tells it to use the `fly.toml` in the repo rather than writing
+a new one. The volume is the step people skip and then wonder why the index
+keeps resetting — without it you have paid for a slower Vercel.
+
+Then give it web search (comma-separated list, see
+[Option A](#7-decide-how-much-of-the-web-it-can-see)):
+
+```bash
+fly secrets set SEARXNG_URL="https://a.example,https://b.example"
+```
+
+Check it: `fly open /health` → `{"documents":43,"storage":"persistent"}`.
+**`"persistent"` is the word that matters** — it means the disk is mounted and
+what it learns will still be there tomorrow.
+
+### Render
+
+Push, then in the dashboard: **New → Blueprint → pick the repo**. It reads
+`render.yaml`, provisions the disk and deploys. Add `SEARXNG_URL` under
+**Environment**.
+
+One caveat worth knowing before you start: a disk cannot be attached to
+Render's free plan, so `render.yaml` asks for Starter (~$7/month). Fly's free
+allowance does include a small volume, which is why it is listed first.
+
+### Then build it an index
+
+This is the part that makes it worth having a disk:
+
+```bash
+fly ssh console -C "npm run bootstrap -- --pages=400"
+```
+
+Every page it reads is one it never has to fetch again. Run it whenever you
+want the engine to know more; the index grows and stays.
+
+## The front door: Vercel
 
 Everything below is done once. Roughly ten minutes.
 
