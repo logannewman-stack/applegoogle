@@ -2,9 +2,9 @@
 
 **NOBODY CAN BUY THE SKY.**
 
-A search engine built on one idea: **the searcher is the only customer.**
-No ads. No sponsored results. No paid placement — there is no code path for
-money to touch a ranking, and [a test enforces that](INTEGRITY.md).
+A search engine built on one idea: **it answers to the person searching, and
+to nobody else.** No ads. No sponsored results. No paid placement — there is
+no code path for money to touch a ranking, and [a test enforces that](INTEGRITY.md).
 
 **Northstar is free right now** — no tiers, no premium results, no locked
 features. Everyone gets the same engine. The only limit is a high anti-abuse

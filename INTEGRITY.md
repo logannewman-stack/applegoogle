@@ -46,6 +46,6 @@ searcher and the advertiser. Northstar has no advertiser. It is **free right
 now**, with no tiers and a single anti-abuse fair-use ceiling identical for
 everyone (`GET /v1/plans` states this). If it is ever funded, it will be by a
 plain subscription — never advertising, never paid placement, never selling
-data — and results stay identical for everyone regardless. Either way the
-searcher is the only customer, which is exactly what lets the ranking answer
-to them alone.
+data — and results stay identical for everyone regardless. Either way there is
+no second interest to serve, which is exactly what lets the ranking answer to
+the person searching and to nobody else.
