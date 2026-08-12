@@ -7,8 +7,7 @@
 //   NODE_USE_ENV_PROXY=1 npm run crawl -- https://example.com
 
 import { makeConfig } from '../src/config.js';
-import { JsonStore } from '../src/storage/store.js';
-import { SearchIndex, emptyIndexData } from '../src/core/index.js';
+import { openIndex } from '../src/storage/open-index.js';
 import { Crawler } from '../src/crawler/crawler.js';
 
 const args = process.argv.slice(2);
@@ -28,13 +27,15 @@ const maxDepth = Number(flag('depth', 2));
 const sameDomain = !args.includes('--all-domains');
 
 const config = makeConfig();
-const store = await new JsonStore(config.dataDir, 'index', emptyIndexData()).load();
-const index = new SearchIndex(store);
+const indexHandle = await openIndex(config, { log: (m) => console.log(m) });
+const index = indexHandle.index;
 const crawler = new Crawler(index, config, { log: (msg) => console.log(`  ${msg}`) });
 
 console.log(`crawling ${seeds.length} seed(s) — up to ${maxPages} pages, depth ${maxDepth}, ${sameDomain ? 'same-domain only' : 'following external links'}`);
 const stats = await crawler.crawl(seeds, { maxPages, maxDepth, sameDomain });
 await index.save();
+const totals = { docs: index.docCount, terms: index.termCount };
+await indexHandle.close();
 
 console.log(`\ndone: ${stats.indexed} indexed, ${stats.fetched} fetched, ${stats.skipped} skipped, ${stats.errors} errors`);
-console.log(`index now holds ${index.docCount} documents, ${index.termCount} terms`);
+console.log(`index now holds ${totals.docs} documents, ${totals.terms} terms`);

@@ -165,6 +165,7 @@ export class SearchIndex {
     doc.removed = true;
     delete this.data.urlToDoc[doc.url];
     this._stats = null;
+    this._tombstones = true;
   }
 
   // Drop tombstoned docs and their postings entries. Called before saves.
@@ -180,6 +181,7 @@ export class SearchIndex {
       if (Object.keys(posting.docs).length === 0) delete this.data.postings[term];
     }
     for (const id of removed) delete this.data.docs[id];
+    this._tombstones = false;
   }
 
   documentFrequency(term) {
@@ -188,6 +190,87 @@ export class SearchIndex {
     let df = 0;
     for (const id in posting.docs) if (!this.data.docs[id]?.removed) df++;
     return df;
+  }
+
+  // ── The read interface ─────────────────────────────────────────────────
+  //
+  // Everything that searches goes through these rather than reaching into the
+  // raw object, so a backend that keeps postings on disk instead of in memory
+  // is a drop-in swap. The shapes here are the contract; see SqliteIndex for
+  // the other implementation of it.
+
+  // { display, docs: { docId: { w, f, pos } } } — or null if unknown.
+  //
+  // Only live documents appear. Tombstones exist for a matter of seconds
+  // (compact() sweeps them before every save) but a caller must never have to
+  // know that, because the SQLite backend has no tombstones at all and both
+  // have to answer identically.
+  postingsFor(term) {
+    const posting = this.data.postings[term];
+    if (!posting) return null;
+    // This backend holds everything in memory, so it never truncates —
+    // which is exactly why it cannot outgrow memory.
+    if (!this._tombstones) return { ...posting, truncated: false };
+    const docs = Object.create(null);
+    for (const id in posting.docs) {
+      if (!this.data.docs[id]?.removed) docs[id] = posting.docs[id];
+    }
+    return { display: posting.display, docs, truncated: false };
+  }
+
+  doc(docId) {
+    return this.data.docs[docId];
+  }
+
+  // The scalars scoring needs, for many documents at once. Here that is just a
+  // lookup; the SQLite backend turns it into a single query instead of tens of
+  // thousands, which is the difference between fast and unusable.
+  docStatsMany(docIds) {
+    const stats = new Map();
+    for (const id of docIds) {
+      const doc = this.data.docs[id];
+      if (doc && !doc.removed) stats.set(id, doc);
+    }
+    return stats;
+  }
+
+  docIdForUrl(url) {
+    return this.data.urlToDoc[url];
+  }
+
+  hasUrl(url) {
+    return this.data.urlToDoc[url] !== undefined;
+  }
+
+  // Every term the index knows, for spelling correction.
+  vocabulary() {
+    return Object.keys(this.data.postings);
+  }
+
+  displayFor(term) {
+    return this.data.postings[term]?.display || term;
+  }
+
+  // [{ term, display, df }], for suggestions. Callers sort and slice.
+  termsWithFrequency() {
+    const terms = [];
+    for (const term in this.data.postings) {
+      const df = this.documentFrequency(term);
+      if (df > 0) terms.push({ term, display: this.data.postings[term].display, df });
+    }
+    return terms;
+  }
+
+  // Any live document — used by setup checks that just want to name one.
+  sampleDocument() {
+    for (const id in this.data.docs) {
+      if (!this.data.docs[id].removed) return this.data.docs[id];
+    }
+    return null;
+  }
+
+  get updatedAt() {
+    return this.data.updatedAt;
   }
 
   // Link authority: PageRank over the crawled link graph. This is an *earned*

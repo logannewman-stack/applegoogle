@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto';
 
 import { makeConfig } from '../config.js';
 import { JsonStore } from '../storage/store.js';
-import { SearchIndex, emptyIndexData } from '../core/index.js';
+import { openIndex } from '../storage/open-index.js';
 import { search, RANKING_SIGNALS, EXCLUDED_FOREVER } from '../core/ranker.js';
 import { stem } from '../core/tokenizer.js';
 import {
@@ -107,12 +107,11 @@ function readBody(req) {
 export async function createApp(overrides = {}) {
   const config = makeConfig(overrides);
 
-  const indexStore = await new JsonStore(config.dataDir, 'index', emptyIndexData()).load();
+  const indexHandle = await openIndex(config, { log: (m) => console.log(`[index] ${m}`) });
+  const index = indexHandle.index;
   const usersStore = await new JsonStore(config.dataDir, 'users', emptyUsersData()).load();
   const usageStore = await new JsonStore(config.dataDir, 'usage', emptyUsageData()).load();
   const historyStore = await new JsonStore(config.dataDir, 'history', emptyHistoryData()).load();
-  const index = new SearchIndex(indexStore);
-
   // On a host with no lasting disk, every cold start begins with an empty
   // store. Build the bundled corpus in memory so the first visitor to a fresh
   // instance is searching something rather than nothing.
@@ -130,7 +129,7 @@ export async function createApp(overrides = {}) {
   // updatedAt stamp, so any index change invalidates the whole cache at once.
   const queryCache = new Map();
   function cachedSearch(q, page, perPage, allowCorrection = true) {
-    const key = `${index.data.updatedAt}|${page}|${perPage}|${allowCorrection ? 'c' : 'l'}|${q}`;
+    const key = `${index.updatedAt}|${page}|${perPage}|${allowCorrection ? 'c' : 'l'}|${q}`;
     if (queryCache.has(key)) {
       const hit = queryCache.get(key);
       queryCache.delete(key);
@@ -154,14 +153,10 @@ export async function createApp(overrides = {}) {
   // lazily whenever the index changes.
   let termDict = { stamp: undefined, terms: [] };
   function getTermDict() {
-    if (termDict.stamp !== index.data.updatedAt) {
-      const terms = [];
-      for (const term in index.data.postings) {
-        const df = index.documentFrequency(term);
-        if (df > 0) terms.push({ term, display: index.data.postings[term].display, df });
-      }
+    if (termDict.stamp !== index.updatedAt) {
+      const terms = index.termsWithFrequency();
       terms.sort((a, b) => b.df - a.df);
-      termDict = { stamp: index.data.updatedAt, terms };
+      termDict = { stamp: index.updatedAt, terms };
     }
     return termDict.terms;
   }
@@ -225,7 +220,7 @@ export async function createApp(overrides = {}) {
           const result = await discovery.expand(q, { force: askedFor });
           if (result.added > 0) {
             index.computeAuthority();
-            indexStore.scheduleSave();
+            indexHandle.scheduleSave();
             queryCache.clear();
             ({ body, cacheStatus } = cachedSearch(q, page, perPage, !literal));
             expanded = { added: result.added, provider: result.provider };
@@ -322,7 +317,7 @@ export async function createApp(overrides = {}) {
       sendJson(res, 200, {
         documents: index.docCount,
         terms: index.termCount,
-        updatedAt: index.data.updatedAt,
+        updatedAt: index.updatedAt,
         discovery: {
           enabled: discovery.enabled,
           provider: config.searchProvider,
@@ -350,7 +345,7 @@ export async function createApp(overrides = {}) {
       const result = await discovery.expand(q, { force: body.force === true });
       if (result.added > 0) {
         index.computeAuthority();
-        indexStore.scheduleSave();
+        indexHandle.scheduleSave();
         queryCache.clear();
       }
       sendJson(res, 200, {
@@ -559,14 +554,13 @@ export async function createApp(overrides = {}) {
     server,
     handleRequest,
     index,
-    stores: { index: indexStore, users: usersStore, usage: usageStore, history: historyStore },
+    stores: { index: indexHandle.store, users: usersStore, usage: usageStore, history: historyStore },
     async close() {
       await new Promise((resolve) => {
         server.close(resolve);
         server.closeAllConnections?.();
       });
-      index.compact();
-      await Promise.all([indexStore.close(), usersStore.close(), usageStore.close(), historyStore.close()]);
+      await Promise.all([indexHandle.close(), usersStore.close(), usageStore.close(), historyStore.close()]);
     },
   };
 }

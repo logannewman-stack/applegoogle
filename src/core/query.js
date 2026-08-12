@@ -104,7 +104,7 @@ export function nearestTerm(index, term, { vocabulary } = {}) {
   // "leaky" → "learn" is distance 2 and changes the meaning completely.
   // Only long words get the wider budget.
   const max = term.length <= 6 ? 1 : 2;
-  const vocab = vocabulary || Object.keys(index.data.postings);
+  const vocab = vocabulary || index.vocabulary();
   let best = null;
   let bestScore = Infinity;
   let bestDf = 0;
@@ -130,7 +130,7 @@ export function nearestTerm(index, term, { vocabulary } = {}) {
 // If some query terms are absent from the index but have close neighbours,
 // return a corrected token list plus a human-readable rewrite of the query.
 export function correctQuery(index, parsed) {
-  const vocabulary = Object.keys(index.data.postings);
+  const vocabulary = index.vocabulary();
   if (vocabulary.length === 0) return null;
 
   const surfaces = tokenize(parsed.free, { surfaces: true });
@@ -142,7 +142,7 @@ export function correctQuery(index, parsed) {
     if (index.documentFrequency(token) > 0) continue;
     const near = nearestTerm(index, token, { vocabulary });
     if (!near) continue;
-    replacements.set(token, index.data.postings[near].display || near);
+    replacements.set(token, index.displayFor(near));
     changed = true;
   }
   if (!changed) return null;

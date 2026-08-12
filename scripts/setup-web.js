@@ -149,7 +149,7 @@ async function main() {
   const result = await discovery.expand(probe, { limit: 2 });
 
   if (result.added > 0) {
-    const doc = Object.values(index.data.docs).find((d) => !d.removed);
+    const doc = index.sampleDocument();
     console.log(`${ok('✓')} indexed ${result.added} page(s) — e.g. ${bold(doc.title || doc.url)}`);
     console.log(`\n${ok(bold('Northstar can search the web.'))}`);
     console.log(`\nStart it:      ${bold('npm start')}`);

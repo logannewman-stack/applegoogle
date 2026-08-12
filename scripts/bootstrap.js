@@ -11,8 +11,7 @@
 // Behind a proxy, prefix with NODE_USE_ENV_PROXY=1 so Node's fetch uses it.
 
 import { makeConfig } from '../src/config.js';
-import { JsonStore } from '../src/storage/store.js';
-import { SearchIndex, emptyIndexData } from '../src/core/index.js';
+import { openIndex } from '../src/storage/open-index.js';
 import { Crawler } from '../src/crawler/crawler.js';
 
 const TOPICS = {
@@ -58,8 +57,8 @@ if (seeds.length === 0) {
 }
 
 const config = makeConfig();
-const store = await new JsonStore(config.dataDir, 'index', emptyIndexData()).load();
-const index = new SearchIndex(store);
+const indexHandle = await openIndex(config, { log: (m) => console.log(m) });
+const index = indexHandle.index;
 const crawler = new Crawler(index, config, { log: (m) => console.log(`  ${m}`) });
 
 console.log(`bootstrapping from ${seeds.length} seed pages — up to ${maxPages} pages, depth ${maxDepth}`);
@@ -68,9 +67,11 @@ console.log('(robots.txt is obeyed, one request per host per second)\n');
 const before = index.docCount;
 const stats = await crawler.crawl(seeds, { maxPages, maxDepth, sameDomain: true });
 await index.save();
+const totals = { docs: index.docCount, terms: index.termCount };
+await indexHandle.close();
 
 console.log(`\nindexed ${stats.indexed} new pages (${stats.fetched} fetched, ${stats.skipped} skipped, ${stats.errors} errors)`);
-console.log(`index: ${before} → ${index.docCount} documents, ${index.termCount} terms`);
+console.log(`index: ${before} → ${totals.docs} documents, ${totals.terms} terms`);
 if (stats.errors > 0 && stats.indexed === 0) {
   console.log('\nEverything failed to fetch. If you are behind a proxy, retry with:');
   console.log('  NODE_USE_ENV_PROXY=1 npm run bootstrap');

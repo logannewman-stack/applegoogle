@@ -117,7 +117,7 @@ export class Discovery {
     for (const raw of candidates) {
       const url = normalizeUrl(raw);
       if (!url) continue;
-      if (this.index.data.urlToDoc[url] !== undefined) continue;
+      if (this.index.hasUrl(url)) continue;
       if (!fresh.includes(url)) fresh.push(url);
     }
 

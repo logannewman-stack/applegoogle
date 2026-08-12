@@ -93,7 +93,6 @@ function freshnessFactor(fetchedAt, now) {
 // [{id, score, matched}] best-first and details holds per-doc signal data
 // used to build explanations.
 export function scoreDocuments(index, query, { now = Date.now(), parsed = null } = {}) {
-  const data = index.data;
   const q = parsed || parseQuery(query);
   const queryTokens = q.terms;
   if (queryTokens.length === 0) return { queryTokens, scored: [], details: new Map(), parsed: q };
@@ -106,19 +105,26 @@ export function scoreDocuments(index, query, { now = Date.now(), parsed = null }
   // Document frequency and IDF once per term — not once per candidate.
   const postingsByTerm = new Map();
   const idfByTerm = new Map();
+  // Words so common that the index would not weigh every page carrying them.
+  // Carried out to the answer rather than swallowed: a search that quietly
+  // looked at part of the corpus is a different search.
+  const limited = [];
   for (const term of uniqueTerms) {
-    const posting = data.postings[term];
+    const posting = index.postingsFor(term);
     if (!posting) continue;
     postingsByTerm.set(term, posting);
+    if (posting.truncated) {
+      limited.push({ term, display: posting.display || term, appearsOn: posting.documentFrequency });
+    }
     idfByTerm.set(term, idf(totalDocs, index.documentFrequency(term)));
   }
 
-  // Gather candidates with per-doc matched term sets.
+  // Gather candidates with per-doc matched term sets. Postings only ever
+  // name live documents, so there is nothing to filter here — which matters
+  // when a document lookup means touching the disk.
   const candidates = new Map(); // docId -> Set(term)
   for (const [term, posting] of postingsByTerm) {
     for (const docId in posting.docs) {
-      const doc = data.docs[docId];
-      if (!doc || doc.removed) continue;
       let set = candidates.get(docId);
       if (!set) {
         set = new Set();
@@ -131,13 +137,14 @@ export function scoreDocuments(index, query, { now = Date.now(), parsed = null }
   // Operators narrow the field before anything is scored. They can only ever
   // remove pages — none of them can promote one.
   if (q.site) {
+    const hosts = index.docStatsMany([...candidates.keys()]);
     for (const docId of [...candidates.keys()]) {
-      const host = data.docs[docId].domain;
-      if (host !== q.site && !host.endsWith(`.${q.site}`)) candidates.delete(docId);
+      const host = hosts.get(docId)?.domain;
+      if (!host || (host !== q.site && !host.endsWith(`.${q.site}`))) candidates.delete(docId);
     }
   }
   for (const ex of q.excluded) {
-    const posting = data.postings[ex.token];
+    const posting = index.postingsFor(ex.token);
     if (!posting) continue;
     for (const docId in posting.docs) candidates.delete(docId);
   }
@@ -169,10 +176,16 @@ export function scoreDocuments(index, query, { now = Date.now(), parsed = null }
     pool = [...candidates].filter(([, terms]) => contentMatchCount(terms) >= 1);
   }
 
+  // One lookup for the whole pool. Scoring wants four numbers per document and
+  // never its text, so asking for documents one at a time — or asking for all
+  // of them — is the difference between a fast query and an unusable one.
+  const docStats = index.docStatsMany(pool.map(([docId]) => docId));
+
   const scored = [];
   const details = new Map();
   for (const [docId, matchedTerms] of pool) {
-    const doc = data.docs[docId];
+    const doc = docStats.get(docId);
+    if (!doc) continue;
     let bm25 = 0;
     const fieldHits = { title: new Set(), description: new Set() };
     for (const term of matchedTerms) {
@@ -214,7 +227,7 @@ export function scoreDocuments(index, query, { now = Date.now(), parsed = null }
   }
 
   scored.sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));
-  return { queryTokens, scored, details, required, parsed: q };
+  return { queryTokens, scored, details, required, limited, parsed: q };
 }
 
 const listJoin = (items) =>
@@ -410,7 +423,7 @@ export function search(index, query, { page = 1, perPage = 10, now = Date.now(),
     }
   }
 
-  const { queryTokens, scored, details, required = [] } = scoreDocuments(index, query, { now, parsed });
+  const { queryTokens, scored, details, required = [], limited = [] } = scoreDocuments(index, query, { now, parsed });
 
   // Query surfaces for human-readable explanations.
   const pairs = tokenize(parsed.raw, { surfaces: true });
@@ -424,8 +437,9 @@ export function search(index, query, { page = 1, perPage = 10, now = Date.now(),
   const perDomain = new Map();
   const diversified = [];
   const overflow = [];
+  const domains = index.docStatsMany(scored.map((hit) => hit.id));
   for (const hit of scored) {
-    const domain = index.data.docs[hit.id].domain;
+    const domain = domains.get(hit.id)?.domain;
     const seen = perDomain.get(domain) || 0;
     if (seen < 3) {
       diversified.push(hit);
@@ -441,7 +455,7 @@ export function search(index, query, { page = 1, perPage = 10, now = Date.now(),
   const pageHits = diversified.slice(startIdx, startIdx + perPage);
 
   const results = pageHits.map((hit) => {
-    const doc = index.data.docs[hit.id];
+    const doc = index.doc(hit.id);
     return {
       url: doc.url,
       domain: doc.domain,
@@ -464,6 +478,10 @@ export function search(index, query, { page = 1, perPage = 10, now = Date.now(),
     totalPages: Math.max(1, Math.ceil(total / perPage)),
     tookMs: Number((performance.now() - started).toFixed(2)),
     correction,
+    // Non-empty when a query word appears on more pages than one search may
+    // weigh at once. The strongest matches for that word were used; the answer
+    // says so instead of implying it read everything.
+    limited,
     operators: parsed.hasOperators ? {
       phrases: parsed.phrases.map((p) => p.surface),
       excluded: parsed.excluded.map((e) => e.surface),

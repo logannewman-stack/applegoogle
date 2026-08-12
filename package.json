@@ -16,7 +16,9 @@
     "crawl": "node scripts/crawl.js",
     "create-user": "node scripts/create-user.js",
     "test": "node --test",
-    "find-searxng": "node scripts/find-searxng.js"
+    "find-searxng": "node scripts/find-searxng.js",
+    "migrate:sqlite": "node scripts/migrate-sqlite.js",
+    "bench": "node scripts/bench.js"
   },
   "dependencies": {},
   "devDependencies": {}

@@ -57,6 +57,12 @@ export function makeConfig(overrides = {}) {
     // Build the index from seeds/ whenever the store comes up empty.
     seedWhenEmpty: flag(env.SEED_WHEN_EMPTY, ephemeral),
 
+    // 'sqlite' keeps postings on disk and reads only the terms a query asks
+    // about, so the index can outgrow memory. 'json' loads everything at boot
+    // — simpler and inspectable, but it stops being reasonable somewhere
+    // around thirty thousand pages.
+    storage: env.STORAGE === 'json' ? 'json' : 'sqlite',
+
     // Northstar is free right now — no tiers, no premium anything. The one
     // limit is a high fair-use ceiling, identical for everyone, that exists
     // purely to stop abuse. (The eventual business model is a subscription —

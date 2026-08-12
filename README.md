@@ -32,7 +32,7 @@ standard-library Node.
 ```bash
 npm run seed     # load sample documents so search works immediately
 npm start        # http://127.0.0.1:3000
-npm test         # 98 tests, including the ranking-integrity test
+npm test         # 125 tests, including the ranking-integrity test
 ```
 
 Open http://127.0.0.1:3000 and search for *pour over coffee*, *closures*, or
@@ -241,7 +241,9 @@ so Node's fetch uses `HTTPS_PROXY`.
 | Path | What it is |
 | --- | --- |
 | `src/core/tokenizer.js` | Normalization, light stemming, stopword handling |
-| `src/core/index.js` | Inverted index, field hit tracking, PageRank + inlinks |
+| `src/core/index.js` | Inverted index in memory, field hit tracking, PageRank + inlinks |
+| `src/core/sqlite-index.js` | The same index kept on disk — the default, and what lifts the ceiling |
+| `src/storage/open-index.js` | Picks a backend, and never loses an index to the choice |
 | `src/core/query.js` | Query language: phrases, exclusion, site filter, typo correction |
 | `src/core/ranker.js` | Scoring, snippets, diversity, `why` receipts — the trust core |
 | `src/websearch/` | Discovery providers (URLs only) + fetch-and-index expansion |
@@ -249,7 +251,52 @@ so Node's fetch uses `HTTPS_PROXY`.
 | `src/api/` | HTTP app, accounts/keys, settings, history, sessions |
 | `public/index.html` | The Northstar web app (installable PWA) |
 | `ios/` | SwiftUI `WKWebView` shell for the App Store path |
-| `test/` | 98 tests, run with `npm test` |
+| `test/` | 125 tests, run with `npm test` |
+
+## Storage: how big can it get
+
+The index is the product. An engine that has already read a few hundred
+thousand pages does not have to ask anyone anything for most queries, which is
+the difference between "search anything" as a promise and as a fact.
+
+Two backends, one interface. `STORAGE=sqlite` (the default) keeps postings on
+disk and reads only the terms a query asks about. `STORAGE=json` keeps
+everything in memory — simpler and inspectable, and it cannot outgrow RAM.
+
+Measured on a realistic 12,000-document corpus (`npm run bench -- --realistic`):
+
+| | boot | memory at boot | query |
+| --- | --- | --- | --- |
+| JSON | 6,429 ms | **1,788 MB** | 66 ms |
+| SQLite | **1 ms** | **~0 MB** | 193 ms |
+
+The JSON store needs 1.8 GB of RAM to open twelve thousand pages, and that
+number grows with the index. SQLite's does not — its boot cost is flat whether
+it holds ten thousand documents or ten million. Queries cost about three times
+as much in absolute terms and are still comfortably under a fifth of a second,
+which is the right trade: you can buy back query time with a cache, but you
+cannot buy back a ceiling.
+
+Both rank identically. `test/index-parity.test.js` runs the same assertions
+against both, including the ranking-integrity test, and asserts the two produce
+the same scores to six decimal places.
+
+**One trade, stated out loud.** A word that appears on more than 50,000 pages
+is read down to its 50,000 most prominent appearances, so a single very common
+word cannot make every search read the whole corpus. Rows are ordered by earned
+field-weighted frequency, so what gets dropped is the page carrying the word
+once in a footer, never the page titled after it. A cap of 5,000 was measured
+first and rejected: it changed which pages reached the top ten. And when the
+cap does bind, the search says so — the response carries a `limited` array
+naming the word and how many pages actually hold it. A search that quietly
+read part of the corpus is a different search, and this engine does not do
+quiet.
+
+Moving an existing JSON index across:
+
+```bash
+npm run migrate:sqlite   # reads index.json, never writes to it
+```
 
 ## API
 

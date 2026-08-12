@@ -6,7 +6,7 @@
 // Every check says what it found and, when it fails, exactly what to do.
 
 import { makeConfig } from '../src/config.js';
-import { JsonStore } from '../src/storage/store.js';
+import { openIndex } from '../src/storage/open-index.js';
 import { SearchIndex, emptyIndexData } from '../src/core/index.js';
 import { Discovery } from '../src/websearch/discovery.js';
 import { PROVIDERS, PROVIDER_NOTES } from '../src/websearch/providers.js';
@@ -39,8 +39,8 @@ async function searxReachable(cfg) {
 }
 
 // ── 1. The index itself ────────────────────────────────────────────────
-const store = await new JsonStore(config.dataDir, 'index', emptyIndexData()).load();
-const index = new SearchIndex(store);
+const indexHandle = await openIndex(config, { log: (m) => console.log(m) });
+const index = indexHandle.index;
 if (index.docCount === 0) {
   fail('Index is empty', 'nothing to search', 'npm run seed   (sample corpus)  ·  npm run bootstrap   (real pages)');
 } else if (index.docCount < 50) {

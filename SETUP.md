@@ -159,7 +159,7 @@ Any ✗ comes with the exact command to fix it.
 npm start          # run it
 npm run doctor     # diagnose anything odd
 npm run bootstrap  # index more of the web
-npm test           # 98 tests, including the one that proves ranking can't be bought
+npm test           # 125 tests, including the one that proves ranking can't be bought
 ```
 
 Want a public URL other people can open? **[DEPLOY.md](DEPLOY.md)** puts it on
